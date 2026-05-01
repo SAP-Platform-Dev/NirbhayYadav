@@ -1,7 +1,5 @@
 - 👋 Hi, I’m @Timeisflatcircle
 - 👀 I’m interested in AWS,SAP
-- 🌱 I’m currently learning AWS, SAP
-- 💞️ I’m looking to collaborate on AWS
 - 📫 How to reach me ...
 
 <!---
