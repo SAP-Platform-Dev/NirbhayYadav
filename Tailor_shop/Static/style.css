@@ -499,6 +499,10 @@ select:focus {
     width: min(780px, 88vw);
 }
 
+.login-page {
+    width: min(480px, 88vw);
+}
+
 .edit-card {
     padding: 30px;
     border: 1px solid #eaded5;
@@ -530,6 +534,15 @@ select:focus {
     justify-content: flex-end;
     gap: 12px;
     margin-top: 24px;
+}
+
+.error-message {
+    margin: 16px 0 0;
+    padding: 12px 14px;
+    border-radius: 6px;
+    background: #f8dddd;
+    color: #8a2d2d;
+    font-weight: 800;
 }
 
 .form-container,

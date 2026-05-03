@@ -1,11 +1,13 @@
 import os
 import smtplib
+from functools import wraps
 from email.message import EmailMessage
 
 import mysql.connector
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, session, url_for
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder="Templates", static_folder="Static")
+app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
 DATABASE_NAME = os.getenv("MYSQL_DATABASE", "tailor_shop")
 
@@ -20,6 +22,8 @@ DB_CONFIG = {
 }
 
 ORDER_STATUSES = ["Pending", "In Progress", "Ready for Trial", "Completed"]
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
 SMTP_CONFIG = {
     "host": os.getenv("SMTP_HOST", ""),
@@ -120,6 +124,15 @@ TailorTrack
 
     return "sent"
 
+def admin_required(view):
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        if not session.get("admin_logged_in"):
+            return redirect(url_for("admin_login", next=request.path))
+        return view(*args, **kwargs)
+
+    return wrapped_view
+
 @app.route('/')
 def index():
     conn = get_db_connection()
@@ -130,6 +143,7 @@ def index():
     return render_template('index.html', orders=orders)
 
 @app.route('/add', methods=['GET', 'POST'])
+@admin_required
 def add_order():
     if request.method == 'POST':
         conn = get_db_connection()
@@ -153,6 +167,29 @@ def add_order():
         conn.close()
         return redirect(url_for('track_order', order_id=order_id, created='1'))
     return render_template('add_order.html')
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    error = None
+    next_url = request.args.get("next") or url_for("admin_orders")
+
+    if request.method == 'POST':
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        next_url = request.form.get("next") or url_for("admin_orders")
+
+        if username == ADMIN_USERNAME and ADMIN_PASSWORD and password == ADMIN_PASSWORD:
+            session["admin_logged_in"] = True
+            return redirect(next_url)
+
+        error = "Invalid admin username or password."
+
+    return render_template('admin_login.html', error=error, next_url=next_url)
+
+@app.route('/admin/logout')
+def admin_logout():
+    session.clear()
+    return redirect(url_for('admin_login'))
 
 @app.route('/track', methods=['GET', 'POST'])
 def track_order():
@@ -182,6 +219,7 @@ def track_order():
     )
 
 @app.route('/admin/orders')
+@admin_required
 def admin_orders():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -197,6 +235,7 @@ def admin_orders():
     )
 
 @app.route('/admin/orders/<int:order_id>/status', methods=['POST'])
+@admin_required
 def update_order_status(order_id):
     status = request.form.get('status', '').strip()
     if status not in ORDER_STATUSES:
@@ -213,6 +252,7 @@ def update_order_status(order_id):
     return redirect(url_for('admin_orders', updated=order_id, email_status=email_status))
 
 @app.route('/admin/orders/<int:order_id>/edit')
+@admin_required
 def edit_order(order_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -226,6 +266,7 @@ def edit_order(order_id):
     return render_template('edit_order.html', order=order, statuses=ORDER_STATUSES)
 
 @app.route('/admin/orders/<int:order_id>/edit', methods=['POST'])
+@admin_required
 def update_order_details(order_id):
     status = request.form.get('status', '').strip()
     if status not in ORDER_STATUSES:
