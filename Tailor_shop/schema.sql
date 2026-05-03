@@ -7,6 +7,8 @@ USE tailor_shop;
 CREATE TABLE IF NOT EXISTS orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
+    phone VARCHAR(20),
+    email VARCHAR(150),
     neck DECIMAL(5, 2) NOT NULL,
     waist DECIMAL(5, 2) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'Pending',
