@@ -2,12 +2,17 @@
 <html lang="en">
 <head>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <title>TailorTrack | Dashboard</title>
+    <title>Style and Fit | Dashboard</title>
 </head>
 <body>
     <header>
         <h1>TailorTrack Dashboard</h1>
-        <a href="/add" class="btn">New Order</a>
+        <nav>
+            <a href="{{ url_for('index') }}">Dashboard</a>
+            <a href="{{ url_for('about') }}">About</a>
+            <a href="{{ url_for('contact') }}">Contact</a>
+            <a href="{{ url_for('add_order') }}" class="btn">New Order</a>
+        </nav>
     </header>
 
     <table>

@@ -5,6 +5,15 @@
     <title>New Measurement</title>
 </head>
 <body>
+    <header>
+        <h1>TailorTrack</h1>
+        <nav>
+            <a href="{{ url_for('index') }}">Dashboard</a>
+            <a href="{{ url_for('about') }}">About</a>
+            <a href="{{ url_for('contact') }}">Contact</a>
+        </nav>
+    </header>
+
     <div class="form-container">
         <h2>Customer Measurement Form</h2>
         <form method="POST">
