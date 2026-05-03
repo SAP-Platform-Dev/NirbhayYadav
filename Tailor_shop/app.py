@@ -10,17 +10,16 @@ orders = [
 
 @app.route('/')
 def index():
-    #return render_template('index.html', orders=orders)
-    return "<h1>The Server is Working!</h1>"
+    return render_template('index.html', orders=orders)
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_order():
     if request.method == 'POST':
         new_order = {
             "id": len(orders) + 1,
-            "name": request.form['name'],
-            "neck": request.form['neck'],
-            "waist": request.form['waist'],
+            "name": request.form['name'].strip(),
+            "neck": float(request.form['neck']),
+            "waist": float(request.form['waist']),
             "status": "Pending"
         }
         orders.append(new_order)
