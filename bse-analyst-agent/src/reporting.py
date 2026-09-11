@@ -69,3 +69,12 @@ def save_investment_summary(
         f.write(f"\n{divider}\nEnd of Report\n")
 
     return filepath
+
+
+class InvestmentReportWriter:
+    """Replaceable adapter around the report formatting capability."""
+
+    def write(self, *args, **kwargs):
+        return save_investment_summary(*args, **kwargs)
+
+    __call__ = write
