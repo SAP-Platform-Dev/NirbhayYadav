@@ -45,14 +45,25 @@ class NSEDownloader:
     @staticmethod
     def _is_pdf_candidate(url: str, title: str = "") -> bool:
         text = f"{url} {title}".lower()
-        return ".pdf" in text and any(term in text for term in ("annual", "report", "ar_", "financial"))
+        # Some BSE annual-report PDFs use opaque AttachHis UUID URLs, so the
+        # URL itself may contain neither 'annual' nor 'report'. The search
+        # result title is therefore equally important.
+        return ".pdf" in text and (
+            any(term in text for term in ("annual", "report", "ar_", "financial"))
+            or "bseindia.com" in url.lower()
+        )
 
     def _fallback_search(self, symbol: str) -> Optional[str]:
         clean_symbol = self._clean_symbol(symbol)
         queries = [
             f'"{clean_symbol}" "annual report" filetype:pdf',
-            f'"{clean_symbol}" "annual report 2024-25" pdf',
             f'"{clean_symbol}" "annual report 2025-26" pdf',
+            f'"{clean_symbol}" "annual report 2024-25" pdf',
+            f'"KJMC Financial Services Limited" "annual report" pdf',
+            f'"KJMC Financial Services Limited" "38th Annual Report" pdf',
+            f'"530235" "annual report" pdf',
+            f'site:bseindia.com "KJMC Financial Services" "Annual Report" pdf',
+            f'site:bseindia.com "530235" "Annual Report" pdf',
         ]
         for query in queries:
             try:
@@ -75,13 +86,23 @@ class NSEDownloader:
                     lower_url = url.lower()
                     lower_title = title.lower()
                     score = 0
+                    if "bseindia.com" in lower_url:
+                        score += 120
                     if "nsearchives.nseindia.com" in lower_url:
-                        score += 100
+                        score += 110
+                    if "kjmc" in lower_url or "kjmc" in lower_title:
+                        score += 40
+                    if "530235" in lower_url or "530235" in lower_title:
+                        score += 35
                     if ".pdf" in lower_url:
                         score += 20
                     if "annual" in lower_title or "annual" in lower_url:
-                        score += 20
-                    if any(year in lower_title or year in lower_url for year in ("2024", "2025", "2026")):
+                        score += 25
+                    if "report" in lower_title or "report" in lower_url:
+                        score += 15
+                    if "2025-26" in lower_title or "2025-26" in lower_url or "2026" in lower_title or "2026" in lower_url:
+                        score += 15
+                    if "2024-25" in lower_title or "2024-25" in lower_url or "2025" in lower_title or "2025" in lower_url:
                         score += 10
                     candidates.append((score, url))
                 if candidates:
