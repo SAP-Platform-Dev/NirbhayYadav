@@ -10,6 +10,22 @@ from src.financial_tools import (
 )
 
 
+def make_year(year: int, multiplier: float = 1.0) -> AnnualFinancials:
+    step = year - 2010
+    return AnnualFinancials(
+        fiscal_year=f"FY{year}",
+        revenue=(100 + step * 10) * multiplier,
+        ebit=(20 + step * 3) * multiplier,
+        pat=(10 + step * 2) * multiplier,
+        total_debt=max(5, 40 - step),
+        total_equity=100 + step * 12,
+        cash_equivalents=10 + step,
+        cfo=(12 + step * 2) * multiplier,
+        interest_expense=2,
+        capex=5,
+    )
+
+
 class FinancialToolsTests(unittest.TestCase):
     def setUp(self):
         self.history = CompanyFinancialHistory(years=[
@@ -23,8 +39,10 @@ class FinancialToolsTests(unittest.TestCase):
     def test_five_year_ratios(self):
         ratios = calculate_fundamental_ratios(self.history)
         self.assertEqual(ratios["years_analyzed"], 5)
+        self.assertEqual(ratios["history_years_available"], 5)
         self.assertGreater(ratios["ROCE (%)"], 15)
         self.assertGreater(ratios["Revenue CAGR (%)"], 10)
+        self.assertIsNone(ratios["Revenue CAGR 10Y (%)"])
         self.assertEqual(ratios["Positive CFO Years"], "5/5")
 
     def test_score_is_deterministic(self):
@@ -45,6 +63,35 @@ class FinancialToolsTests(unittest.TestCase):
         quality = calculate_quality_score(ratios, governance_clean=False)
         decision = determine_final_recommendation(quality, ratios, forensic_clean=False)
         self.assertEqual(decision["verdict"], "AVOID")
+
+    def test_ten_year_history_is_accepted(self):
+        history = CompanyFinancialHistory(years=[make_year(year) for year in range(2017, 2027)])
+        ratios = calculate_fundamental_ratios(history)
+        self.assertEqual(ratios["history_years_available"], 10)
+        self.assertIsNotNone(ratios["Revenue CAGR 10Y (%)"])
+        self.assertEqual(ratios["trends"]["revenue"], "UP")
+
+    def test_seven_year_history_is_accepted(self):
+        history = CompanyFinancialHistory(years=[make_year(year) for year in range(2020, 2027)])
+        ratios = calculate_fundamental_ratios(history)
+        self.assertEqual(ratios["history_years_available"], 7)
+        self.assertIsNotNone(ratios["Revenue CAGR 5Y (%)"])
+        self.assertIsNone(ratios["Revenue CAGR 10Y (%)"])
+
+    def test_one_year_history_is_accepted_without_fake_cagr_zero(self):
+        history = CompanyFinancialHistory(years=[make_year(2026)])
+        ratios = calculate_fundamental_ratios(history)
+        self.assertEqual(ratios["history_years_available"], 1)
+        self.assertIsNone(ratios["Revenue YoY Growth (%)"])
+        self.assertIsNone(ratios["Revenue CAGR (%)"])
+        self.assertIsNone(ratios["PAT CAGR (%)"])
+        self.assertIsNone(ratios["Revenue CAGR 3Y (%)"])
+        self.assertNotEqual(ratios["Revenue CAGR (%)"], 0.0)
+
+    def test_unavailable_cagr_is_not_used_as_zero_in_valuation(self):
+        value = calculate_pe_valuation(2000, 100, 210, None, target_pe=20, margin_of_safety_pct=20)
+        self.assertFalse(value["available"])
+        self.assertIn("PAT CAGR is unavailable", value["reason"])
 
 
 if __name__ == "__main__":

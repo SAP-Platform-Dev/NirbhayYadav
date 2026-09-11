@@ -46,7 +46,7 @@ class FinancialAnalysisEngine:
         current_price: float,
         shares_outstanding_cr: float,
         latest_pat_cr: float,
-        pat_cagr_pct: float,
+        pat_cagr_pct: float | None,
         target_pe: float = 25.0,
         margin_of_safety_pct: float = 20.0,
     ) -> dict[str, Any]:
@@ -95,7 +95,7 @@ class FinancialAnalysisEngine:
                 current_price,
                 shares_outstanding_cr,
                 history.years[-1].pat,
-                float(ratios["PAT CAGR (%)"]),
+                ratios.get("PAT CAGR (%)"),
                 target_pe,
                 margin_of_safety_pct,
             )

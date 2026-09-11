@@ -5,7 +5,7 @@ reading annual-report tables. The annual-report PDF remains a qualitative
 source for governance, forensic and management commentary.
 
 Primary regulatory probe: NSE financial-results filings.
-Fallback: public Screener.in company tables for the five-year structured
+Fallback: public Screener.in company tables for up to ten years of structured
 history used by the deterministic financial engine.
 """
 
@@ -136,6 +136,17 @@ class StructuredFinancialProvider:
             year += 2000
         return f"FY{year}"
 
+    @staticmethod
+    def _sum_if_complete(*values: float | None) -> float | None:
+        if any(value is None for value in values):
+            return None
+        return sum(float(value) for value in values if value is not None)
+
+    @staticmethod
+    def _reliable_records(records: list[AnnualFinancials]) -> list[AnnualFinancials]:
+        filtered = [r for r in records if re.match(r"^FY20\d{2}$", r.fiscal_year)]
+        return filtered[-10:]
+
     def _screener_history(self, symbol: str) -> CompanyFinancialHistory:
         last_error: Exception | None = None
         for template in self.SCREENER_URLS:
@@ -181,29 +192,31 @@ class StructuredFinancialProvider:
             pat = net_profit[idx]
             if revenue is None or pat is None:
                 continue
-            total_equity = (equity_capital[idx] or 0.0) + (reserves[idx] or 0.0)
-            cash = (investments[idx] or 0.0) + (cash_bank[idx] or 0.0)
+            total_equity = self._sum_if_complete(equity_capital[idx], reserves[idx])
+            cash = self._sum_if_complete(investments[idx], cash_bank[idx])
             records.append(AnnualFinancials(
                 fiscal_year=fiscal_year,
                 revenue=float(revenue),
-                ebit=float(operating_profit[idx] or 0.0),
+                ebit=operating_profit[idx],
                 pat=float(pat),
-                total_debt=float(borrowings[idx] or 0.0),
-                total_equity=float(total_equity),
-                cash_equivalents=float(cash),
-                cfo=float(cfo[idx] or 0.0),
-                interest_expense=float(interest[idx] or 0.0),
+                total_debt=borrowings[idx],
+                total_equity=total_equity,
+                cash_equivalents=cash,
+                cfo=cfo[idx],
+                interest_expense=interest[idx],
             ))
 
-        records = [r for r in records if re.match(r"^FY20\d{2}$", r.fiscal_year)]
-        records = records[-5:]
-        if len(records) < 3:
-            raise FinancialDataError(f"Fewer than 3 valid annual financial years for {symbol}")
+        records = self._reliable_records(records)
+        if not records:
+            raise FinancialDataError(f"No valid annual financial years for {symbol}")
 
         nonzero_revenue = sum(1 for row in records if row.revenue > 0)
         nonzero_pat = sum(1 for row in records if row.pat != 0)
-        nonzero_cfo = sum(1 for row in records if row.cfo != 0)
-        if nonzero_revenue < 3 or nonzero_pat < 3 or nonzero_cfo < 2:
+        available_cfo = sum(1 for row in records if row.cfo is not None)
+        nonzero_cfo = sum(1 for row in records if row.cfo is not None and row.cfo != 0)
+        if nonzero_revenue != len(records) or nonzero_pat != len(records):
+            raise FinancialDataError(f"Financial data quality check failed for {symbol}")
+        if available_cfo >= 2 and nonzero_cfo < 2:
             raise FinancialDataError(f"Financial data quality check failed for {symbol}")
 
         return CompanyFinancialHistory(
