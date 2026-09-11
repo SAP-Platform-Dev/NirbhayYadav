@@ -23,13 +23,16 @@ def _market_cap() -> Optional[str]:
     print("  2. Smallcap")
     print("  3. Midcap")
     print("  4. Largecap")
-    choice = input("Choose: ").strip()
+    print("  0. Back")
+    choice = input("Choose universe: ").strip()
     return {"1": "MICROCAP", "2": "SMALLCAP", "3": "MIDCAP", "4": "LARGECAP"}.get(choice)
 
 
 def _show_cached_watchlist(segment: str) -> bool:
     path = "./outputs/opportunity_scan.csv"
     if not os.path.exists(path):
+        print(f"\n[!] No saved {segment} watchlist found.")
+        print("    Run the initial scan first.")
         return False
 
     with open(path, newline="", encoding="utf-8") as fh:
@@ -37,13 +40,14 @@ def _show_cached_watchlist(segment: str) -> bool:
 
     selected = [row for row in rows if str(row.get("market_cap_category", "")).upper() == segment]
     if not selected:
+        print(f"\n[!] No saved {segment} watchlist found.")
+        print("    Run the initial scan for this universe first.")
         return False
 
     print(f"\n[+] Loaded saved {segment} quality/watchlist scan.")
     print("[+] No universe or quality rescan was performed.")
-    print("[+] Use Refresh = y when you want new market/fundamental data.")
     print("\nTOP 50 WATCHLIST — SAVED SCAN")
-    print("-" * 100)
+    print("-" * 110)
     for index, row in enumerate(selected[:50], 1):
         growth = row.get("earnings_growth_pct")
         pe = row.get("pe")
@@ -51,29 +55,46 @@ def _show_cached_watchlist(segment: str) -> bool:
             f"{index:>2}. {row.get('symbol', ''):<15} "
             f"Score {float(row.get('opportunity_score') or 0):>5.1f}  "
             f"Growth {growth if growth else 'N/A':>7}  "
-            f"P/E {pe if pe else 'N/A':>7}"
+            f"P/E {pe if pe else 'N/A':>7}  "
+            f"MCap ₹{float(row.get('market_cap_cr') or 0):>9.0f} Cr"
         )
     return True
 
 
-def _opportunity_scan() -> None:
-    from src.opportunity_scanner import run_opportunity_scan
+def _universe_actions(segment: str) -> None:
+    """Show actions for one selected universe without forcing a rescan."""
+    while True:
+        print(f"\n{segment} universe")
+        print("  1. Run / Refresh Quality Scan")
+        print("  2. View Saved Top 50 Watchlist")
+        print("  0. Back")
+        choice = input("Choose: ").strip()
 
+        if choice == "0":
+            return
+
+        if choice == "2":
+            _show_cached_watchlist(segment)
+            _pause()
+            continue
+
+        if choice == "1":
+            refresh = input("Refresh universe + quality scan? (y/N): ").strip().lower() == "y"
+            print(f"\n[*] Running full {segment} universe + quality scan...")
+            print("[*] Growth-aware valuation is used; governance is still validated during deep research.")
+            from src.opportunity_scanner import run_opportunity_scan
+            run_opportunity_scan(segment=segment, top=50, refresh=refresh)
+            _pause()
+            continue
+
+        print("[!] Invalid option. Choose 1, 2 or 0.")
+
+
+def _opportunity_scan() -> None:
     segment = _market_cap()
     if not segment:
-        print("[!] Invalid market-cap selection.")
         return
-
-    refresh = input("Refresh universe + quality scan? (y/N): ").strip().lower() == "y"
-
-    if not refresh and _show_cached_watchlist(segment):
-        _pause()
-        return
-
-    print(f"\n[*] Running full {segment} universe + quality scan...")
-    print("[*] Growth-aware valuation is used; governance is still validated during deep research.")
-    run_opportunity_scan(segment=segment, top=50, refresh=refresh)
-    _pause()
+    _universe_actions(segment)
 
 
 def _deep_stock() -> None:
