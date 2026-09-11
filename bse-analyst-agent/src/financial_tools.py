@@ -17,6 +17,9 @@ class AnnualFinancials(BaseModel):
 
 class CompanyFinancialHistory(BaseModel):
     years: List[AnnualFinancials] = Field(min_length=3, max_length=5, description="Oldest fiscal year first, latest fiscal year last")
+    source: str = Field(default="Unknown", description="Structured financial-data source")
+    data_quality: str = Field(default="UNKNOWN", description="HIGH, MEDIUM, LOW, or UNKNOWN")
+    source_notes: str = Field(default="", description="Financial-data provenance and validation notes")
 
 
 CompanyFinancialInputs = AnnualFinancials
@@ -63,6 +66,9 @@ def calculate_fundamental_ratios(data: CompanyFinancialHistory) -> Dict[str, Any
     return {
         "years_analyzed": len(years),
         "latest_fiscal_year": latest.fiscal_year,
+        "financial_data_source": data.source,
+        "financial_data_quality": data.data_quality,
+        "financial_data_notes": data.source_notes,
         "ROCE (%)": round(roce, 2),
         "ROE (%)": round(roe, 2),
         "Revenue YoY Growth (%)": round(rev_growth_yoy, 2),
