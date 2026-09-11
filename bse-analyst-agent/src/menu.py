@@ -58,7 +58,34 @@ def _show_cached_watchlist(segment: str) -> bool:
             f"P/E {pe if pe else 'N/A':>7}  "
             f"MCap ₹{float(row.get('market_cap_cr') or 0):>9.0f} Cr"
         )
-    return True
+
+    while True:
+        choice = input("\nEnter stock number for Deep Stock Engine (0 = Back): ").strip()
+        if choice == "0":
+            return True
+        try:
+            index = int(choice)
+        except ValueError:
+            print("[!] Enter a valid stock number.")
+            continue
+
+        if not 1 <= index <= min(50, len(selected)):
+            print(f"[!] Choose a number from 1 to {min(50, len(selected))}, or 0 to go back.")
+            continue
+
+        symbol = str(selected[index - 1].get("symbol", "")).strip().upper()
+        if not symbol:
+            print("[!] Selected row has no symbol.")
+            continue
+
+        print(f"\n[*] Launching Deep Stock Engine for {symbol}")
+        print("    Annual report + financial scan + valuation + governance + corporate filings + decision")
+        from src.stock_analysis import analyze_stock
+        result = analyze_stock(symbol)
+        if result is not None:
+            print(f"\n[+] Complete stock decision generated for {symbol}.")
+        _pause()
+        return True
 
 
 def _universe_actions(segment: str) -> None:
@@ -75,7 +102,6 @@ def _universe_actions(segment: str) -> None:
 
         if choice == "2":
             _show_cached_watchlist(segment)
-            _pause()
             continue
 
         if choice == "1":
