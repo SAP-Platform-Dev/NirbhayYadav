@@ -115,7 +115,7 @@ def _corporate_risk() -> None:
 def _deep_scan() -> None:
     from src.deep_scanner import run_deep_scan
 
-    top = _ask_int("Stage-1 candidates to shortlist", 10)
+    top = _ask_int("Final shortlist size", 10)
     deep_limit = _ask_int("Maximum candidates for deep analysis", 5)
     live = input("Use live NSE corporate filings? (Y/n): ").strip().lower() != "n"
     run_deep_scan(top=top, deep_limit=deep_limit, live_filings=live)
@@ -123,10 +123,12 @@ def _deep_scan() -> None:
 
 
 def _view_latest_results() -> None:
-    path = os.path.join("outputs", "deep_scan_results.csv")
-    if not os.path.exists(path):
-        path = os.path.join("outputs", "small_microcap_universe.csv")
-    if not os.path.exists(path):
+    paths = [
+        os.path.join("outputs", "small_microcap_deep_analysis.csv"),
+        os.path.join("outputs", "small_microcap_universe.csv"),
+    ]
+    path = next((candidate for candidate in paths if os.path.exists(candidate)), None)
+    if not path:
         print("[!] No result file found in ./outputs yet.")
         _pause()
         return
@@ -155,12 +157,12 @@ def _view_latest_results() -> None:
 def _discovery_menu() -> None:
     while True:
         print("\n--- DISCOVERY ---")
-        print("  1. Scan NSE Universe")
+        print("  1. Discover / Refresh NSE Universe")
         print("  2. Find Small / Micro Cap Candidates")
         print("  0. Back")
         choice = input("Choose: ").strip()
         if choice == "1":
-            _scan_nse(refresh=False)
+            _scan_nse(refresh=True)
         elif choice == "2":
             _scan_nse(refresh=False)
         elif choice == "0":
