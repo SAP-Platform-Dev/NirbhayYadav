@@ -89,7 +89,7 @@ def analyze_stock(symbol, price=None, shares_cr=None, target_pe=25.0, mos=20.0):
     result = engine.analyze(symbol, price, shares_cr, target_pe, mos)
 
     if result is None:
-        print(f"[!] Could not download annual report for {symbol}. Exiting.")
+        print(f"[!] Analysis could not complete for {symbol}. See the preceding message for the failing step.")
         return None
 
     result = _attach_corporate_risk(result, symbol)

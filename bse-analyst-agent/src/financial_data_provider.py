@@ -178,11 +178,13 @@ class StructuredFinancialProvider:
         cash_bank = self._row(balance, "cash & bank", "cash and bank", "cash & equivalents")
         cfo = self._row(cashflow, "cash from operating activity", "cash from operations")
 
-        arrays = [sales, operating_profit, interest, net_profit, equity_capital, reserves, borrowings, investments, cash_bank, cfo]
-        if not years or any(values is None for values in arrays):
+        required_arrays = [sales, net_profit]
+        optional_arrays = [operating_profit, interest, equity_capital, reserves, borrowings, investments, cash_bank, cfo]
+        arrays = required_arrays + [values for values in optional_arrays if values is not None]
+        if not years or any(values is None for values in required_arrays):
             raise FinancialDataError(f"Incomplete Screener financial tables for {symbol}")
 
-        count = min(len(years), *(len(values) for values in arrays if values is not None))
+        count = min(len(years), *(len(values) for values in arrays))
         records: list[AnnualFinancials] = []
         for idx in range(count):
             fiscal_year = years[idx]
@@ -192,18 +194,18 @@ class StructuredFinancialProvider:
             pat = net_profit[idx]
             if revenue is None or pat is None:
                 continue
-            total_equity = self._sum_if_complete(equity_capital[idx], reserves[idx])
-            cash = self._sum_if_complete(investments[idx], cash_bank[idx])
+            total_equity = self._sum_if_complete(equity_capital[idx], reserves[idx]) if equity_capital and reserves else None
+            cash = self._sum_if_complete(investments[idx], cash_bank[idx]) if investments and cash_bank else None
             records.append(AnnualFinancials(
                 fiscal_year=fiscal_year,
                 revenue=float(revenue),
-                ebit=operating_profit[idx],
+                ebit=operating_profit[idx] if operating_profit else None,
                 pat=float(pat),
-                total_debt=borrowings[idx],
+                total_debt=borrowings[idx] if borrowings else None,
                 total_equity=total_equity,
                 cash_equivalents=cash,
-                cfo=cfo[idx],
-                interest_expense=interest[idx],
+                cfo=cfo[idx] if cfo else None,
+                interest_expense=interest[idx] if interest else None,
             ))
 
         records = self._reliable_records(records)
