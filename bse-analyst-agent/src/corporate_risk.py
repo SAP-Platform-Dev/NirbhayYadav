@@ -5,7 +5,6 @@ It is designed to run before expensive Gemini analysis.
 """
 
 from dataclasses import dataclass, field
-import re
 from typing import Any, Iterable, Mapping
 
 
@@ -78,7 +77,6 @@ def _announcement_risk(subject: str, details: str) -> tuple[int, list[str], bool
         "pledge": 15,
         "resignation of director": 10,
         "regulatory order": 20,
-        "sebi": 10,
         "stock exchange fine": 15,
     }
 
