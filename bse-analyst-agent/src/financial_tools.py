@@ -119,25 +119,20 @@ def calculate_pe_valuation(current_price: float, shares_outstanding_cr: float, l
     }
 
 
-def determine_final_recommendation(quality: Dict[str, Any], ratios: Dict[str, Any], forensic_clean: bool, valuation: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    """Deterministic final decision; avoids allowing an LLM to override hard risk rules."""
-    if not forensic_clean or ratios["Positive CFO Years"].startswith("0/"):
-        return {"verdict": "AVOID", "reason": "Governance/forensic clearance failed or operating cash flow is persistently weak."}
+def determine_final_recommendation(
+    quality: Dict[str, Any],
+    ratios: Dict[str, Any],
+    forensic_clean: bool,
+    valuation: Dict[str, Any] | None = None,
+    governance_grade: str = "A" if forensic_clean else "D",
+) -> Dict[str, Any]:
+    """Compatibility wrapper around the V8 deterministic decision engine."""
+    from src.decision_engine import calculate_investment_decision
 
-    score = quality["score_100"]
-    if score < 60:
-        return {"verdict": "AVOID", "reason": "Quality score is below the minimum 60/100 threshold."}
-
-    if valuation and valuation.get("available"):
-        price = valuation["current_price"]
-        buy_below = valuation["buy_below"]
-        fair_value = valuation["fair_value"]
-        if score >= 80 and price <= buy_below:
-            return {"verdict": "BUY", "reason": "High quality and price is at or below the margin-of-safety level."}
-        if price <= fair_value:
-            return {"verdict": "WATCHLIST", "reason": "Quality is acceptable, but the price is above the preferred margin-of-safety level."}
-        return {"verdict": "WATCHLIST", "reason": "Business quality may be acceptable, but valuation leaves insufficient margin of safety."}
-
-    if score >= 80:
-        return {"verdict": "BUY", "reason": "Quality score is at least 80/100 and no hard governance failure was detected."}
-    return {"verdict": "WATCHLIST", "reason": "Fundamentals are acceptable but do not meet the high-conviction quality threshold."}
+    return calculate_investment_decision(
+        quality=quality,
+        ratios=ratios,
+        valuation=valuation,
+        governance_grade=governance_grade,
+        forensic_clean=forensic_clean,
+    )
