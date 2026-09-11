@@ -6,149 +6,123 @@ class AnnualFinancials(BaseModel):
     fiscal_year: str = Field(description="Fiscal year label, e.g. FY2026")
     revenue: float = Field(description="Revenue from operations, INR Cr")
     ebit: float = Field(description="Operating profit / EBIT, INR Cr")
-    pat: float = Field(description="Profit after tax, INR Cr")
-    total_equity: float = Field(description="Total equity, INR Cr")
-    total_debt: float = Field(description="Total debt, INR Cr")
-    cash: float = Field(description="Cash and cash equivalents, INR Cr")
-    cfo: float = Field(description="Cash flow from operations, INR Cr")
-    interest_expense: float = Field(description="Interest expense, INR Cr")
+    pat: float = Field(description="Profit after tax attributable to shareholders, INR Cr")
+    total_debt: float = Field(description="Total debt including lease liabilities, INR Cr")
+    total_equity: float = Field(description="Shareholders' equity / net worth, INR Cr")
+    cash_equivalents: float = Field(description="Cash, cash equivalents and current investments, INR Cr")
+    cfo: float = Field(description="Cash flow from operating activities, INR Cr")
+    interest_expense: float = Field(description="Finance costs / interest expense, INR Cr")
+    capex: float = Field(default=0.0, description="Capital expenditure / purchase of PPE and intangibles, INR Cr; positive amount")
 
 
 class CompanyFinancialHistory(BaseModel):
-    company_name: str
-    years: List[AnnualFinancials]
+    years: List[AnnualFinancials] = Field(min_length=3, max_length=5, description="Oldest fiscal year first, latest fiscal year last")
 
 
-def calculate_fundamental_ratios(history: CompanyFinancialHistory) -> Dict[str, Any]:
-    years = history.years
-    if not years:
-        return {}
+CompanyFinancialInputs = AnnualFinancials
 
-    latest = years[-1]
-    prior = years[-2] if len(years) >= 2 else None
 
-    avg_capital = latest.total_equity + latest.total_debt - latest.cash
-    roce = (latest.ebit / avg_capital * 100) if avg_capital else 0.0
-    roe = (latest.pat / latest.total_equity * 100) if latest.total_equity else 0.0
-    revenue_yoy = ((latest.revenue / prior.revenue) - 1) * 100 if prior and prior.revenue else 0.0
-    pat_yoy = ((latest.pat / prior.pat) - 1) * 100 if prior and prior.pat else 0.0
+def _growth(new: float, old: float) -> float:
+    return ((new - old) / old * 100.0) if old else 0.0
 
-    n = len(years) - 1
-    revenue_cagr = ((latest.revenue / years[0].revenue) ** (1 / n) - 1) * 100 if n and years[0].revenue else 0.0
-    pat_cagr = ((latest.pat / years[0].pat) ** (1 / n) - 1) * 100 if n and years[0].pat else 0.0
-    pat_margin = (latest.pat / latest.revenue * 100) if latest.revenue else 0.0
-    debt_equity = (latest.total_debt / latest.total_equity) if latest.total_equity else 0.0
-    net_debt = latest.total_debt - latest.cash
-    interest_coverage = (latest.ebit / latest.interest_expense) if latest.interest_expense else 0.0
-    cfo_pat = (latest.cfo / latest.pat) if latest.pat else 0.0
-    cfo_pat_values = [(y.cfo / y.pat) for y in years if y.pat]
-    avg_cfo_pat = sum(cfo_pat_values) / len(cfo_pat_values) if cfo_pat_values else 0.0
+
+def calculate_fundamental_ratios(data: CompanyFinancialHistory) -> Dict[str, Any]:
+    years = data.years
+    latest, prior = years[-1], years[-2]
+
+    capital_employed = latest.total_equity + latest.total_debt - latest.cash_equivalents
+    roce = latest.ebit / capital_employed * 100 if capital_employed > 0 else 0.0
+    roe = latest.pat / latest.total_equity * 100 if latest.total_equity > 0 else 0.0
+    net_debt = latest.total_debt - latest.cash_equivalents
+    de_ratio = latest.total_debt / latest.total_equity if latest.total_equity else 0.0
+    interest_coverage = latest.ebit / latest.interest_expense if latest.interest_expense > 0 else 999.0
+    cfo_to_pat = latest.cfo / latest.pat if latest.pat > 0 else 0.0
+    rev_growth_yoy = _growth(latest.revenue, prior.revenue)
+    pat_growth_yoy = _growth(latest.pat, prior.pat)
+
+    first, n = years[0], len(years) - 1
+    revenue_cagr = ((latest.revenue / first.revenue) ** (1 / n) - 1) * 100 if first.revenue > 0 and latest.revenue > 0 else 0.0
+    pat_cagr = ((latest.pat / first.pat) ** (1 / n) - 1) * 100 if first.pat > 0 and latest.pat > 0 else 0.0
+
+    margins = [y.pat / y.revenue * 100 for y in years if y.revenue > 0]
+    latest_margin = margins[-1] if margins else 0.0
+    avg_margin = sum(margins) / len(margins) if margins else 0.0
+    margin_stability = max(margins) - min(margins) if margins else 0.0
     positive_cfo_years = sum(1 for y in years if y.cfo > 0)
+    conversion = [y.cfo / y.pat for y in years if y.pat > 0]
+    avg_cash_conversion = sum(conversion) / len(conversion) if conversion else 0.0
 
-    hurdles = []
-    if roce < 10:
-        hurdles.append("ROCE below 10%")
-    if roe < 10:
-        hurdles.append("ROE below 10%")
-    if debt_equity > 1:
-        hurdles.append("Debt/Equity above 1")
-    if avg_cfo_pat < 0.5:
-        hurdles.append("Average CFO/PAT below 0.5")
+    hurdles = {
+        "roce_above_15": roce >= 15.0,
+        "clean_debt": de_ratio <= 1.0 or net_debt <= 0,
+        "cash_conversion_sound": cfo_to_pat >= 0.70,
+        "healthy_coverage": interest_coverage >= 3.5,
+        "five_year_cfo_positive": positive_cfo_years >= max(3, len(years) - 1),
+    }
 
     return {
-        "ROCE": round(roce, 2),
-        "ROE": round(roe, 2),
-        "Revenue YoY %": round(revenue_yoy, 2),
-        "PAT YoY %": round(pat_yoy, 2),
-        "Revenue CAGR %": round(revenue_cagr, 2),
-        "PAT CAGR %": round(pat_cagr, 2),
-        "PAT Margin %": round(pat_margin, 2),
-        "Debt to Equity": round(debt_equity, 2),
-        "Net Debt": round(net_debt, 2),
-        "Interest Coverage": round(interest_coverage, 2),
-        "CFO / PAT Quality Ratio": round(cfo_pat, 2),
-        "Average CFO / PAT": round(avg_cfo_pat, 2),
-        "Positive CFO Years": positive_cfo_years,
-        "Total Years": len(years),
-        "Hurdles": hurdles,
+        "years_analyzed": len(years),
+        "latest_fiscal_year": latest.fiscal_year,
+        "ROCE (%)": round(roce, 2),
+        "ROE (%)": round(roe, 2),
+        "Revenue YoY Growth (%)": round(rev_growth_yoy, 2),
+        "PAT YoY Growth (%)": round(pat_growth_yoy, 2),
+        "Revenue CAGR (%)": round(revenue_cagr, 2),
+        "PAT CAGR (%)": round(pat_cagr, 2),
+        "Latest PAT Margin (%)": round(latest_margin, 2),
+        "Average PAT Margin (%)": round(avg_margin, 2),
+        "PAT Margin Range (pp)": round(margin_stability, 2),
+        "Debt to Equity": round(de_ratio, 2),
+        "Net Debt (Cr)": round(net_debt, 2),
+        "Interest Coverage Ratio": round(interest_coverage, 2),
+        "CFO / PAT Quality Ratio": round(cfo_to_pat, 2),
+        "Average CFO / PAT (5Y)": round(avg_cash_conversion, 2),
+        "Positive CFO Years": f"{positive_cfo_years}/{len(years)}",
+        "hurdles_passed": hurdles,
     }
 
 
 def calculate_quality_score(ratios: Dict[str, Any], governance_clean: bool = True) -> Dict[str, Any]:
-    roce = ratios.get("ROCE", 0)
-    roe = ratios.get("ROE", 0)
-    revenue_cagr = ratios.get("Revenue CAGR %", 0)
-    pat_cagr = ratios.get("PAT CAGR %", 0)
-    debt_equity = ratios.get("Debt to Equity", 0)
-    net_debt = ratios.get("Net Debt", 0)
-    cfo_pat = ratios.get("CFO / PAT Quality Ratio", 0)
-    avg_cfo_pat = ratios.get("Average CFO / PAT", 0)
-
-    capital_efficiency = 20 if roce >= 20 else 15 if roce >= 15 else 8 if roce >= 10 else 0
-    growth = 20 if revenue_cagr >= 15 and pat_cagr >= 15 else 15 if revenue_cagr >= 10 and pat_cagr >= 10 else 8 if revenue_cagr >= 5 else 0
-    balance_sheet = 20 if net_debt <= 0 else 15 if debt_equity <= 0.5 else 10 if debt_equity <= 1 else 0
-    cash_quality = 20 if cfo_pat >= 1 and avg_cfo_pat >= 0.8 else 15 if cfo_pat >= 0.7 and avg_cfo_pat >= 0.7 else 8 if avg_cfo_pat >= 0.5 else 0
-    governance = 20 if governance_clean else 0
-
-    score = capital_efficiency + growth + balance_sheet + cash_quality + governance
-    rating = "INVESTIBLE" if score >= 80 else "WATCHLIST" if score >= 60 else "AVOID"
-
-    return {
-        "score_100": score,
-        "rating": rating,
-        "components": {
-            "capital_efficiency": capital_efficiency,
-            "growth": growth,
-            "balance_sheet": balance_sheet,
-            "cash_quality": cash_quality,
-            "governance": governance,
-        },
+    components = {
+        "capital_efficiency": 20 if ratios["ROCE (%)"] >= 20 else 15 if ratios["ROCE (%)"] >= 15 else 8 if ratios["ROCE (%)"] >= 10 else 0,
+        "growth": 20 if ratios["Revenue CAGR (%)"] >= 15 and ratios["PAT CAGR (%)"] >= 15 else 15 if ratios["Revenue CAGR (%)"] >= 10 and ratios["PAT CAGR (%)"] >= 10 else 8 if ratios["Revenue CAGR (%)"] >= 5 else 0,
+        "balance_sheet": 20 if ratios["Net Debt (Cr)"] <= 0 else 15 if ratios["Debt to Equity"] <= 0.5 else 10 if ratios["Debt to Equity"] <= 1 else 0,
+        "cash_quality": 20 if ratios["CFO / PAT Quality Ratio"] >= 1 and ratios["Average CFO / PAT (5Y)"] >= 0.8 else 15 if ratios["CFO / PAT Quality Ratio"] >= 0.7 and ratios["Average CFO / PAT (5Y)"] >= 0.7 else 8 if ratios["Average CFO / PAT (5Y)"] >= 0.5 else 0,
+        "governance": 20 if governance_clean else 0,
     }
+    score = sum(components.values())
+    rating = "INVESTIBLE" if score >= 80 else "WATCHLIST" if score >= 60 else "AVOID"
+    return {"score_100": score, "rating": rating, "components": components}
 
 
-def calculate_pe_valuation(
-    current_price: float,
-    market_cap_cr: float,
-    shares_cr: float,
-    pat_cr: float,
-    pat_cagr_pct: float = 0.0,
-    target_pe: float = 20.0,
-    margin_of_safety_pct: float = 30.0,
-) -> Dict[str, Any]:
-    eps = pat_cr / shares_cr if shares_cr else 0.0
-    current_pe = current_price / eps if eps else None
-    fair_value = eps * target_pe if eps else None
-    buy_below = fair_value * (1 - margin_of_safety_pct / 100) if fair_value is not None else None
-
+def calculate_pe_valuation(current_price: float, shares_outstanding_cr: float, latest_pat_cr: float, pat_cagr_pct: float, target_pe: float = 25.0, margin_of_safety_pct: float = 20.0) -> Dict[str, Any]:
+    if current_price <= 0 or shares_outstanding_cr <= 0 or latest_pat_cr <= 0:
+        return {"available": False, "reason": "Valid price, shares outstanding and PAT are required."}
+    eps = latest_pat_cr / shares_outstanding_cr
+    fair_value = eps * target_pe
+    buy_below = fair_value * (1 - margin_of_safety_pct / 100)
+    market_cap_cr = current_price * shares_outstanding_cr
+    implied_pe = current_price / eps if eps else 0.0
     return {
-        "available": fair_value is not None,
+        "available": True,
         "current_price": round(current_price, 2),
         "market_cap_cr": round(market_cap_cr, 2),
-        "shares_cr": round(shares_cr, 2),
         "eps": round(eps, 2),
-        "current_pe": round(current_pe, 2) if current_pe is not None else None,
+        "current_pe": round(implied_pe, 2),
         "target_pe": round(target_pe, 2),
-        "fair_value": round(fair_value, 2) if fair_value is not None else None,
+        "fair_value": round(fair_value, 2),
         "margin_of_safety_pct": round(margin_of_safety_pct, 2),
-        "buy_below": round(buy_below, 2) if buy_below is not None else None,
-        "upside_to_fair_value_pct": round((fair_value / current_price - 1) * 100, 2) if fair_value is not None and current_price else None,
+        "buy_below": round(buy_below, 2),
+        "upside_to_fair_value_pct": round((fair_value / current_price - 1) * 100, 2),
         "pat_cagr_used_pct": round(pat_cagr_pct, 2),
     }
 
 
-def determine_final_recommendation(
-    quality: Dict[str, Any],
-    ratios: Dict[str, Any],
-    forensic_clean: bool,
-    valuation: Dict[str, Any] | None = None,
-    governance_grade: str | None = None,
-) -> Dict[str, Any]:
+def determine_final_recommendation(quality: Dict[str, Any], ratios: Dict[str, Any], forensic_clean: bool, valuation: Dict[str, Any] | None = None, governance_grade: str | None = None) -> Dict[str, Any]:
     """Compatibility wrapper around the V8 deterministic decision engine."""
     from src.decision_engine import calculate_investment_decision
-
     if governance_grade is None:
         governance_grade = "A" if forensic_clean else "D"
-
     return calculate_investment_decision(
         quality=quality,
         ratios=ratios,
