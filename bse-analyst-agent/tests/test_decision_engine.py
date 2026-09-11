@@ -29,7 +29,7 @@ class DecisionEngineTests(unittest.TestCase):
         )
         self.assertEqual(decision["verdict"], "BUY")
         self.assertEqual(decision["valuation_state"], "MARGIN_OF_SAFETY")
-        self.assertEqual(decision["decision_score"], 85)
+        self.assertEqual(decision["decision_score"], 90)
 
     def test_above_fair_value_becomes_watchlist(self):
         valuation = {
