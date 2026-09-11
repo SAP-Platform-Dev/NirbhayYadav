@@ -11,17 +11,12 @@ from typing import Any, Mapping, Protocol, Sequence
 
 
 class UniverseDiscovery(Protocol):
-    def discover(self, limit: int | None = None, refresh: bool = False) -> list[Mapping[str, Any]]:
+    def run(self, refresh: bool = False, top: int = 50, limit: int | None = None, output_dir: str = "./outputs") -> Sequence[Mapping[str, Any]]:
         ...
 
 
 class AnnualReportDownloader(Protocol):
-    def download_report(
-        self,
-        symbol: str,
-        custom_filename: str | None = None,
-        force_redownload: bool = False,
-    ) -> str | None:
+    def download_report(self, symbol: str, custom_filename: str | None = None, force_redownload: bool = False) -> str | None:
         ...
 
 
@@ -39,11 +34,7 @@ class FinancialAnalysis(Protocol):
     def calculate_ratios(self, history: Any) -> Mapping[str, Any]:
         ...
 
-    def calculate_quality(
-        self,
-        ratios: Mapping[str, Any],
-        governance_clean: bool = True,
-    ) -> Mapping[str, Any]:
+    def calculate_quality(self, ratios: Mapping[str, Any], governance_clean: bool = True) -> Mapping[str, Any]:
         ...
 
     def calculate_valuation(self, *args: Any, **kwargs: Any) -> Mapping[str, Any]:
@@ -54,14 +45,7 @@ class FinancialAnalysis(Protocol):
 
 
 class StockResearch(Protocol):
-    def analyze(
-        self,
-        symbol: str,
-        price: float | None = None,
-        shares_cr: float | None = None,
-        target_pe: float = 25.0,
-        mos: float = 20.0,
-    ) -> Mapping[str, Any] | None:
+    def analyze(self, symbol: str, price: float | None = None, shares_cr: float | None = None, target_pe: float = 25.0, mos: float = 20.0) -> Mapping[str, Any] | None:
         ...
 
 
@@ -69,24 +53,17 @@ class DeepScanner(Protocol):
     def analyze_candidate(self, row: Mapping[str, Any], live_filings: bool = True) -> Mapping[str, Any]:
         ...
 
-    def run(
-        self,
-        input_csv: str = "./outputs/small_microcap_universe.csv",
-        top: int = 10,
-        deep_limit: int = 20,
-        output_dir: str = "./outputs",
-        live_filings: bool = True,
-    ) -> Sequence[Mapping[str, Any]]:
+    def run(self, input_csv: str = "./outputs/small_microcap_universe.csv", top: int = 10, deep_limit: int = 20, output_dir: str = "./outputs", live_filings: bool = True) -> Sequence[Mapping[str, Any]]:
         ...
 
 
 class ReportWriter(Protocol):
-    def __call__(self, *args: Any, **kwargs: Any) -> str:
+    def write(self, *args: Any, **kwargs: Any) -> str:
         ...
 
 
 PUBLIC_MODULE_APIS = {
-    "discovery": "src.universe_scan.run_universe_scan",
+    "discovery": "src.universe_scan.UniverseScanEngine.run",
     "risk": "src.corporate_risk.CorporateRiskEngine.assess",
     "financial_engine": "src.financial_engine.FinancialAnalysisEngine",
     "financial_ratios": "src.financial_tools.calculate_fundamental_ratios",
@@ -97,5 +74,5 @@ PUBLIC_MODULE_APIS = {
     "document_parser": "src.doc_parser.FinancialDocParser.extract_critical_sections",
     "stock_research": "src.stock_research_engine.StockResearchEngine.analyze",
     "deep_scan": "src.deep_scanner.DeepScannerEngine.run",
-    "reporting": "src.reporting.save_investment_summary",
+    "reporting": "src.reporting.InvestmentReportWriter.write",
 }
