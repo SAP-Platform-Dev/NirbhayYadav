@@ -104,6 +104,13 @@ def main(symbol, price=None, shares_cr=None, target_pe=25.0, mos=20.0):
 
 
 if __name__ == "__main__":
+    # No arguments = interactive menu. Existing CLI commands remain available
+    # for automation/backward compatibility (e.g. --scan, --deep-scan, TCS).
+    if len(sys.argv) == 1:
+        from src.menu import show_menu
+        show_menu()
+        raise SystemExit(0)
+
     cli = argparse.ArgumentParser(description="Indian equity research agent and small/micro-cap scanner")
     cli.add_argument("symbol", nargs="?", default="TCS", help="NSE symbol for deep analysis")
     cli.add_argument("--scan", action="store_true", help="Stage 1: discover NSE small/micro-cap candidates")
@@ -121,5 +128,7 @@ if __name__ == "__main__":
     args = cli.parse_args()
     if args.deep_scan:
         run_deep_scan(input_csv=args.input_csv, top=args.top, deep_limit=args.deep_limit, live_filings=not args.no_live_filings)
-    elif args.scan: run_universe_scan(refresh=args.refresh, top=args.top, limit=args.limit)
-    else: main(args.symbol, args.price, args.shares_cr, args.target_pe, args.mos)
+    elif args.scan:
+        run_universe_scan(refresh=args.refresh, top=args.top, limit=args.limit)
+    else:
+        main(args.symbol, args.price, args.shares_cr, args.target_pe, args.mos)
