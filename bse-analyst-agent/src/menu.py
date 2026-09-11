@@ -52,6 +52,31 @@ def _scan_nse(refresh: bool = False) -> None:
     _pause()
 
 
+def _opportunity_scan() -> None:
+    from src.opportunity_scanner import run_opportunity_scan
+
+    print("\n--- SELECT MARKET-CAP UNIVERSE ---")
+    print("  1. Microcap")
+    print("  2. Smallcap")
+    print("  3. Midcap")
+    print("  4. Largecap")
+    print("  0. Back")
+    choice = input("Choose: ").strip()
+    segment = {"1": "MICROCAP", "2": "SMALLCAP", "3": "MIDCAP", "4": "LARGECAP"}.get(choice)
+    if not segment:
+        return
+
+    top = _ask_int("How many top candidates", 20)
+    quality_pool = _ask_int("How many liquid candidates should receive fundamental checks", max(100, top))
+    refresh = input("Refresh the NSE universe? (y/N): ").strip().lower() == "y"
+
+    print("\n[*] Stage 1 = candidate generation, not BUY/AVOID.")
+    print("[*] Growth is rewarded, valuation is growth-aware, and missing governance data is NOT treated as clean.")
+    print("[*] Large/Mid/Small uses current universe market-cap ranks; Microcap is a <= ₹5,000 Cr subset of Smallcap.")
+    run_opportunity_scan(segment=segment, top=top, refresh=refresh, quality_pool=quality_pool)
+    _pause()
+
+
 def _analyse_stock() -> None:
     from src.stock_analysis import analyze_stock
 
@@ -115,16 +140,20 @@ def _corporate_risk() -> None:
 def _deep_scan() -> None:
     from src.deep_scanner import run_deep_scan
 
+    input_csv = "./outputs/opportunity_scan.csv"
+    if not os.path.exists(input_csv):
+        input_csv = "./outputs/small_microcap_universe.csv"
     top = _ask_int("Final shortlist size", 10)
     deep_limit = _ask_int("Maximum candidates for deep analysis", 5)
     live = input("Use live NSE corporate filings? (Y/n): ").strip().lower() != "n"
-    run_deep_scan(top=top, deep_limit=deep_limit, live_filings=live)
+    run_deep_scan(input_csv=input_csv, top=top, deep_limit=deep_limit, live_filings=live)
     _pause()
 
 
 def _view_latest_results() -> None:
     paths = [
         os.path.join("outputs", "small_microcap_deep_analysis.csv"),
+        os.path.join("outputs", "opportunity_scan.csv"),
         os.path.join("outputs", "small_microcap_universe.csv"),
     ]
     path = next((candidate for candidate in paths if os.path.exists(candidate)), None)
@@ -142,13 +171,13 @@ def _view_latest_results() -> None:
         return
 
     preferred = [
-        "symbol", "company_name", "market_cap_category", "verdict",
-        "quality_score", "corporate_risk_score", "governance_grade",
+        "symbol", "company_name", "market_cap_category", "market_cap_rank", "opportunity_score",
+        "growth_score", "pe", "verdict", "quality_score", "corporate_risk_score", "governance_grade",
     ]
     fields = [field for field in preferred if field in rows[0]] or list(rows[0].keys())[:8]
 
     print("\n" + " | ".join(f"{field[:18]:<18}" for field in fields))
-    print("-" * min(140, len(fields) * 21))
+    print("-" * min(160, len(fields) * 21))
     for row in rows[:20]:
         print(" | ".join(f"{str(row.get(field, ''))[:18]:<18}" for field in fields))
     _pause()
@@ -191,12 +220,12 @@ def _research_menu() -> None:
 def _scanner_menu() -> None:
     while True:
         print("\n--- OPPORTUNITY SCANNER ---")
-        print("  1. Quick Small / Micro Cap Scan")
-        print("  2. Deep Scan Candidates")
+        print("  1. Scan Market Opportunities")
+        print("  2. Deep Research Candidates")
         print("  0. Back")
         choice = input("Choose: ").strip()
         if choice == "1":
-            _scan_nse(refresh=False)
+            _opportunity_scan()
         elif choice == "2":
             _deep_scan()
         elif choice == "0":
