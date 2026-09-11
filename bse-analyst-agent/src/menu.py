@@ -1,8 +1,4 @@
-"""Interactive menu for the NSE equity research agent.
-
-The menu is deliberately a thin UI layer. It imports independent use-case
-modules but those modules never import this menu or the CLI entrypoint.
-"""
+"""Simple interactive menu for the NSE equity research agent."""
 
 import csv
 import os
@@ -13,29 +9,6 @@ def _pause() -> None:
     input("\nPress Enter to return...")
 
 
-def _ask_int(prompt: str, default: int) -> int:
-    value = input(f"{prompt} [{default}]: ").strip()
-    if not value:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        print("[!] Invalid whole number. Using the default.")
-        return default
-
-
-def _ask_float(prompt: str, default: Optional[float] = None) -> Optional[float]:
-    suffix = f" [{default}]" if default is not None else " [optional]"
-    value = input(f"{prompt}{suffix}: ").strip()
-    if not value:
-        return default
-    try:
-        return float(value)
-    except ValueError:
-        print("[!] Invalid number. Leaving it blank.")
-        return default
-
-
 def _symbol() -> Optional[str]:
     symbol = input("NSE symbol: ").strip().upper()
     if not symbol:
@@ -44,36 +17,29 @@ def _symbol() -> Optional[str]:
     return symbol
 
 
-def _scan_nse(refresh: bool = False) -> None:
-    from src.universe_scan import run_universe_scan
-
-    top = _ask_int("How many candidates should be saved", 50)
-    run_universe_scan(refresh=refresh, top=top)
-    _pause()
+def _market_cap() -> Optional[str]:
+    print("\nMarket-cap universe")
+    print("  1. Microcap")
+    print("  2. Smallcap")
+    print("  3. Midcap")
+    print("  4. Largecap")
+    choice = input("Choose: ").strip()
+    return {"1": "MICROCAP", "2": "SMALLCAP", "3": "MIDCAP", "4": "LARGECAP"}.get(choice)
 
 
 def _opportunity_scan() -> None:
     from src.opportunity_scanner import run_opportunity_scan
 
-    print("\n--- SELECT MARKET-CAP UNIVERSE ---")
-    print("  1. Microcap")
-    print("  2. Smallcap")
-    print("  3. Midcap")
-    print("  4. Largecap")
-    print("  0. Back")
-    choice = input("Choose: ").strip()
-    segment = {"1": "MICROCAP", "2": "SMALLCAP", "3": "MIDCAP", "4": "LARGECAP"}.get(choice)
+    segment = _market_cap()
     if not segment:
         return
 
-    top = _ask_int("How many top candidates", 20)
-    quality_pool = _ask_int("How many liquid candidates should receive fundamental checks", max(100, top))
-    refresh = input("Refresh the NSE universe? (y/N): ").strip().lower() == "y"
+    refresh = input("Refresh NSE universe? (y/N): ").strip().lower() == "y"
 
-    print("\n[*] Stage 1 = candidate generation, not BUY/AVOID.")
-    print("[*] Growth is rewarded, valuation is growth-aware, and missing governance data is NOT treated as clean.")
-    print("[*] Large/Mid/Small uses current universe market-cap ranks; Microcap is a <= ₹5,000 Cr subset of Smallcap.")
-    run_opportunity_scan(segment=segment, top=top, refresh=refresh, quality_pool=quality_pool)
+    print(f"\n[*] Scanning {segment} and building the top 50 quality watchlist...")
+    print("[*] Growth matters, valuation is growth-aware, and governance still requires deep research.")
+    print("[*] Stage 1 creates the watchlist only — it does not issue BUY/AVOID decisions.")
+    run_opportunity_scan(segment=segment, top=50, refresh=refresh)
     _pause()
 
 
@@ -84,13 +50,7 @@ def _analyse_stock() -> None:
     if not symbol:
         _pause()
         return
-
-    print("\nOptional valuation inputs. Leave blank if unavailable.")
-    price = _ask_float("Current share price")
-    shares_cr = _ask_float("Shares outstanding (crore)")
-    target_pe = _ask_float("Target P/E", 25.0) or 25.0
-    mos = _ask_float("Margin of safety %", 20.0) or 20.0
-    analyze_stock(symbol, price, shares_cr, target_pe, mos)
+    analyze_stock(symbol)
     _pause()
 
 
@@ -142,19 +102,63 @@ def _deep_scan() -> None:
 
     input_csv = "./outputs/opportunity_scan.csv"
     if not os.path.exists(input_csv):
-        input_csv = "./outputs/small_microcap_universe.csv"
-    top = _ask_int("Final shortlist size", 10)
-    deep_limit = _ask_int("Maximum candidates for deep analysis", 5)
+        print("[!] No 50-stock watchlist found. Run 'Scan & Build Watchlist' first.")
+        _pause()
+        return
+
+    print("\n--- DEEP RESEARCH FROM TOP 50 WATCHLIST ---")
+    print("Enter symbols separated by commas, or press Enter for the first 5.")
+    symbols = input("Symbols: ").strip().upper()
+
+    if symbols:
+        requested = [item.strip() for item in symbols.split(",") if item.strip()]
+        with open(input_csv, newline="", encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        selected = [row for row in rows if str(row.get("symbol", "")).upper() in requested]
+        missing = [symbol for symbol in requested if symbol not in {str(row.get("symbol", "")).upper() for row in rows}]
+        if missing:
+            print(f"[!] Not found in top 50 watchlist: {', '.join(missing)}")
+        if not selected:
+            _pause()
+            return
+
+        temp_csv = "./outputs/deep_research_selection.csv"
+        with open(temp_csv, "w", newline="", encoding="utf-8") as fh:
+            fields = list(rows[0].keys()) if rows else []
+            writer = csv.DictWriter(fh, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(selected)
+        input_csv = temp_csv
+        deep_limit = len(selected)
+    else:
+        deep_limit = 5
+
     live = input("Use live NSE corporate filings? (Y/n): ").strip().lower() != "n"
-    run_deep_scan(input_csv=input_csv, top=top, deep_limit=deep_limit, live_filings=live)
+    run_deep_scan(input_csv=input_csv, top=deep_limit, deep_limit=deep_limit, live_filings=live)
     _pause()
+
+
+def _scanner_menu() -> None:
+    while True:
+        print("\n--- STOCK OPPORTUNITY AGENT ---")
+        print("  1. Scan & Build Top 50 Watchlist")
+        print("  2. Deep Research from Top 50")
+        print("  0. Exit")
+        choice = input("Choose: ").strip()
+        if choice == "1":
+            _opportunity_scan()
+        elif choice == "2":
+            _deep_scan()
+        elif choice == "0":
+            return
+        else:
+            print("[!] Invalid option.")
 
 
 def _view_latest_results() -> None:
     paths = [
         os.path.join("outputs", "small_microcap_deep_analysis.csv"),
         os.path.join("outputs", "opportunity_scan.csv"),
-        os.path.join("outputs", "small_microcap_universe.csv"),
     ]
     path = next((candidate for candidate in paths if os.path.exists(candidate)), None)
     if not path:
@@ -175,105 +179,35 @@ def _view_latest_results() -> None:
         "growth_score", "pe", "verdict", "quality_score", "corporate_risk_score", "governance_grade",
     ]
     fields = [field for field in preferred if field in rows[0]] or list(rows[0].keys())[:8]
-
     print("\n" + " | ".join(f"{field[:18]:<18}" for field in fields))
     print("-" * min(160, len(fields) * 21))
-    for row in rows[:20]:
+    for row in rows[:50]:
         print(" | ".join(f"{str(row.get(field, ''))[:18]:<18}" for field in fields))
     _pause()
-
-
-def _discovery_menu() -> None:
-    while True:
-        print("\n--- DISCOVERY ---")
-        print("  1. Discover / Refresh NSE Universe")
-        print("  2. Find Small / Micro Cap Candidates")
-        print("  0. Back")
-        choice = input("Choose: ").strip()
-        if choice == "1":
-            _scan_nse(refresh=True)
-        elif choice == "2":
-            _scan_nse(refresh=False)
-        elif choice == "0":
-            return
-        else:
-            print("[!] Invalid option.")
-
-
-def _research_menu() -> None:
-    while True:
-        print("\n--- STOCK RESEARCH ---")
-        print("  1. Full Stock Analysis")
-        print("  2. Corporate Risk Check")
-        print("  0. Back")
-        choice = input("Choose: ").strip()
-        if choice == "1":
-            _analyse_stock()
-        elif choice == "2":
-            _corporate_risk()
-        elif choice == "0":
-            return
-        else:
-            print("[!] Invalid option.")
-
-
-def _scanner_menu() -> None:
-    while True:
-        print("\n--- OPPORTUNITY SCANNER ---")
-        print("  1. Scan Market Opportunities")
-        print("  2. Deep Research Candidates")
-        print("  0. Back")
-        choice = input("Choose: ").strip()
-        if choice == "1":
-            _opportunity_scan()
-        elif choice == "2":
-            _deep_scan()
-        elif choice == "0":
-            return
-        else:
-            print("[!] Invalid option.")
-
-
-def _reports_menu() -> None:
-    while True:
-        print("\n--- REPORTS ---")
-        print("  1. View Latest Results")
-        print("  2. Open Outputs Folder")
-        print("  0. Back")
-        choice = input("Choose: ").strip()
-        if choice == "1":
-            _view_latest_results()
-        elif choice == "2":
-            print(f"Outputs directory: {os.path.abspath('outputs')}")
-            _pause()
-        elif choice == "0":
-            return
-        else:
-            print("[!] Invalid option.")
 
 
 def show_menu() -> None:
     while True:
         print("\n" + "=" * 68)
-        print("        NSE EQUITY RESEARCH & 10X OPPORTUNITY AGENT")
+        print("        NSE EQUITY OPPORTUNITY AGENT")
         print("=" * 68)
-        print("\n  1. Discovery")
-        print("  2. Stock Research")
-        print("  3. Opportunity Scanner")
-        print("  4. Reports")
+        print("\n  1. Stock Opportunity Scanner")
+        print("  2. Full Stock Analysis")
+        print("  3. Corporate Risk Check")
+        print("  4. View Top 50 Watchlist")
         print("  0. Exit")
         print("=" * 68)
 
         choice = input("Choose an option: ").strip()
         try:
             if choice == "1":
-                _discovery_menu()
-            elif choice == "2":
-                _research_menu()
-            elif choice == "3":
                 _scanner_menu()
+            elif choice == "2":
+                _analyse_stock()
+            elif choice == "3":
+                _corporate_risk()
             elif choice == "4":
-                _reports_menu()
+                _view_latest_results()
             elif choice == "0":
                 print("\nGoodbye.")
                 return
