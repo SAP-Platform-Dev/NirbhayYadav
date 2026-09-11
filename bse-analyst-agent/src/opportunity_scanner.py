@@ -1,9 +1,9 @@
 """Market-cap opportunity scanner.
 
-Stage 1 is deliberately a candidate-generation engine. It scans the selected
-market-cap universe, enriches a liquidity-ranked pool with lightweight Yahoo
-fundamentals, applies a growth-aware quality score, and returns research-worthy
-candidates. It does not issue BUY/WATCHLIST/AVOID decisions.
+Stage 1 scans the selected market-cap universe, enriches the full candidate
+universe with lightweight fundamentals, applies a growth-aware quality score,
+and returns the top 50 as a research watchlist. It does not issue BUY/AVOID
+decisions.
 
 Large/mid/small classification follows the SEBI/AMFI rank convention using the
 current discovered universe: large = ranks 1-100, mid = 101-250, small = 251+
@@ -13,6 +13,7 @@ with market cap <= Rs 5,000 Cr.
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import time
@@ -25,7 +26,6 @@ from .nse_universe import NSEUniverse
 
 SEGMENTS = ("MICROCAP", "SMALLCAP", "MIDCAP", "LARGECAP")
 MICROCAP_MAX_CR = 5000.0
-QUALITY_POOL_DEFAULT = 100
 
 
 def _raw(value: Any) -> float | None:
@@ -183,10 +183,10 @@ class OpportunityScanner:
     def run(
         self,
         segment: str,
-        top: int = 20,
+        top: int = 50,
         refresh: bool = False,
         universe_limit: int | None = None,
-        quality_pool: int = QUALITY_POOL_DEFAULT,
+        quality_pool: int | None = None,
         output_dir: str = "./outputs",
     ) -> list[dict[str, Any]]:
         segment = segment.strip().upper()
@@ -195,7 +195,7 @@ class OpportunityScanner:
         if top < 1:
             raise ValueError("top must be at least 1")
 
-        print(f"\n[*] Scanning {segment} universe...")
+        print(f"\n[*] Scanning entire {segment} universe...")
         rows = self.universe.discover(limit=universe_limit, refresh=refresh)
         rows = [row for row in rows if row.get("market_cap_cr") is not None]
         rows.sort(key=lambda row: float(row["market_cap_cr"]), reverse=True)
@@ -206,15 +206,17 @@ class OpportunityScanner:
             if category == segment:
                 ranked.append({**row, "market_cap_rank": rank, "market_cap_category": category})
 
-        # Fundamentals are the expensive part. Start with the most liquid names
-        # in the selected universe, then rank the enriched pool.
-        ranked.sort(key=lambda row: float(row.get("avg_daily_value_cr") or 0.0), reverse=True)
-        pool = ranked[: max(top, quality_pool)]
+        # Stage 1 is intentionally universe-wide: quality, growth, financial
+        # health, cash flow and valuation determine the top 50. Liquidity is a
+        # scoring input, not a gate that decides which companies get checked.
+        pool = ranked
         cache = self._load_cache(output_dir)
         enriched = 0
         failed = 0
 
-        for row in pool:
+        print(f"[+] Quality checks queued for {len(pool)} {segment} candidates")
+
+        for index, row in enumerate(pool, 1):
             symbol = str(row.get("symbol") or "").upper()
             if not symbol:
                 continue
@@ -236,6 +238,8 @@ class OpportunityScanner:
                 **fundamentals,
             })
             row.update(self._score(row))
+            if index % 100 == 0:
+                print(f"[*] Quality checked {index}/{len(pool)}")
 
         self._save_cache(output_dir, cache)
         pool.sort(key=lambda row: (float(row.get("opportunity_score") or 0.0), float(row.get("avg_daily_value_cr") or 0.0)), reverse=True)
@@ -243,7 +247,6 @@ class OpportunityScanner:
 
         os.makedirs(output_dir, exist_ok=True)
         path = os.path.join(output_dir, "opportunity_scan.csv")
-        import csv
         fields = [
             "symbol", "company_name", "market_cap_category", "market_cap_rank", "market_cap_cr", "price",
             "avg_daily_value_cr", "opportunity_score", "growth_score", "quality_score",
@@ -257,10 +260,10 @@ class OpportunityScanner:
             writer.writerows(selected)
 
         print(f"[+] Universe rows: {len(rows)}")
-        print(f"[+] {segment} candidates: {len(ranked)}")
-        print(f"[+] Fundamental pool: {len(pool)} | newly enriched: {enriched} | failed: {failed}")
-        print(f"[+] Saved top {len(selected)} to: {path}")
-        print("\nTOP OPPORTUNITIES — Stage 1 candidate generation only")
+        print(f"[+] {segment} candidates quality-checked: {len(ranked)}")
+        print(f"[+] Newly enriched: {enriched} | failed: {failed}")
+        print(f"[+] Saved top {len(selected)} watchlist candidates to: {path}")
+        print("\nTOP 50 WATCHLIST — Stage 1 quality ranking only")
         print("Management/governance is not treated as clean merely because data is missing; deep research remains required.")
         print("-" * 110)
         for index, row in enumerate(selected, 1):
@@ -275,6 +278,6 @@ class OpportunityScanner:
         return selected
 
 
-def run_opportunity_scan(segment: str, top: int = 20, refresh: bool = False, universe_limit: int | None = None,
-                         quality_pool: int = QUALITY_POOL_DEFAULT, output_dir: str = "./outputs"):
+def run_opportunity_scan(segment: str, top: int = 50, refresh: bool = False, universe_limit: int | None = None,
+                         quality_pool: int | None = None, output_dir: str = "./outputs"):
     return OpportunityScanner().run(segment, top, refresh, universe_limit, quality_pool, output_dir)
