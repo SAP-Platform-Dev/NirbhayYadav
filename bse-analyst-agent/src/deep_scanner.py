@@ -249,6 +249,28 @@ def run_deep_scan(
     print(f"[+] Saved checkpoint/final deep-analysis results: {path}")
     print("\nTOP SMALL/MICRO-CAP RESEARCH SHORTLIST")
     print("-" * 125)
-    for i, row in enumerate(selected, 1):
-        print(f"{i:>2}. {row['symbol']:<15} {row.get('market_cap_category',''):<9} {row.get('verdict',''):<10} Decision {row.get('decision_score')}  Quality {row.get('quality_score')}  Gov {row.get('governance_grade')}  Fair ₹{row.get('fair_value')}")
+       for i, row in enumerate(selected, 1):
+        components = row.get("decision_components") or {}
+        print(
+            f"{i:>2}. {row['symbol']:<15} "
+            f"{row.get('market_cap_category',''):<9} "
+            f"{row.get('verdict',''):<10} "
+            f"Decision {row.get('decision_score')}  "
+            f"Fund {components.get('fundamental_quality', 0)}/80  "
+            f"Val {components.get('valuation', 0)}/10  "
+            f"Gov {components.get('governance', 0)}/10  "
+            f"Fair ₹{row.get('fair_value')}"
+        )
+
     return selected
+print(
+    f"{i:>2}. {row['symbol']:<15} "
+    f"{row.get('market_cap_category',''):<9} "
+    f"{row.get('verdict',''):<10} "
+    f"Decision {row.get('decision_score')}  "
+    f"Fund {components.get('fundamental_quality', 0)}/80  "
+    f"Val {components.get('valuation', 0)}/10  "
+    f"Gov {components.get('governance', 0)}/10  "
+    f"Fair ₹{row.get('fair_value')}"
+)
+return selected
