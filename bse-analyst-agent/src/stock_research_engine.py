@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any, Callable
 
+from .financial_data_provider import FinancialDataError, StructuredFinancialProvider
 from .financial_engine import FinancialAnalysisEngine
 from .reporting import save_investment_summary
 
@@ -12,8 +13,8 @@ from .reporting import save_investment_summary
 class StockResearchEngine:
     """Orchestrate one-stock research through injectable collaborators.
 
-    The engine owns workflow only. Downloader, parser, AI orchestrator,
-    financial engine and report writer can all be replaced independently.
+    Financial numbers come from the structured financial provider. The annual
+    report PDF is retained for qualitative governance/forensic analysis only.
     """
 
     def __init__(
@@ -23,12 +24,14 @@ class StockResearchEngine:
         orchestrator_factory: Callable[[], Any],
         financial_engine: FinancialAnalysisEngine | None = None,
         report_writer: Callable[..., str] = save_investment_summary,
+        financial_provider: StructuredFinancialProvider | None = None,
     ) -> None:
         self.downloader = downloader
         self.parser_factory = parser_factory
         self.orchestrator_factory = orchestrator_factory
         self.financial_engine = financial_engine or FinancialAnalysisEngine()
         self.report_writer = report_writer
+        self.financial_provider = financial_provider or StructuredFinancialProvider()
 
     def analyze(
         self,
@@ -39,6 +42,8 @@ class StockResearchEngine:
         mos: float = 20.0,
     ) -> dict[str, Any] | None:
         symbol = symbol.upper().strip()
+
+        # PDF is required for qualitative governance/forensic evidence.
         pdf_path = self.downloader.download_report(symbol)
         if not pdf_path:
             return None
@@ -50,9 +55,15 @@ class StockResearchEngine:
         forensics = orchestrator.audit_forensics(
             sections["auditor_report"], sections["notes"]
         )
-        history = orchestrator.extract_metrics_payload(
-            sections["financial_statements"]
-        )
+
+        # IMPORTANT: do not ask the LLM to read financial tables. Use
+        # structured market data and fail closed if the data is incomplete.
+        try:
+            history = self.financial_provider.get_history(symbol)
+        except FinancialDataError as exc:
+            print(f"[!] Structured financial data unavailable for {symbol}: {exc}")
+            print("    Deep-stock analysis stopped to prevent false financial conclusions.")
+            return None
 
         governance_clean = (
             forensics.audit_opinion_type.lower().startswith("unmodified")
@@ -102,5 +113,6 @@ class StockResearchEngine:
             "valuation": analysis.valuation,
             "recommendation": analysis.recommendation,
             "memo": memo,
+            "financial_history": history,
             "report_path": saved_file,
         }
