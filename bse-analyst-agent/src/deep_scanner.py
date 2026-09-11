@@ -85,6 +85,8 @@ def analyze_candidate(
                 "status": "CORPORATE_RISK_REJECT",
                 "stage": "CORPORATE_RISK",
                 "verdict": "AVOID",
+                "decision_score": 0,
+                "decision_reason": "Hard corporate-risk signal detected before deep analysis.",
                 "corporate_risk_score": corporate.risk_score,
                 "governance_grade": corporate.governance_grade,
                 "corporate_risk_flags": ";".join(corporate.risk_flags),
@@ -134,7 +136,13 @@ def analyze_candidate(
             )
 
         memo = ai.run_investment_committee(forensics, ratios, quality, valuation)
-        recommendation = determine_final_recommendation(quality, ratios, governance_clean, valuation)
+        recommendation = determine_final_recommendation(
+            quality,
+            ratios,
+            governance_clean,
+            valuation,
+            governance_grade=corporate.governance_grade,
+        )
 
         result = {
             **row,
@@ -142,6 +150,9 @@ def analyze_candidate(
             "stage": "COMPLETE",
             "verdict": recommendation["verdict"],
             "decision_reason": recommendation["reason"],
+            "decision_score": recommendation["decision_score"],
+            "decision_components": recommendation["decision_components"],
+            "valuation_state": recommendation["valuation_state"],
             "quality_score": quality["score_100"],
             "ai_conviction": memo.conviction_score,
             "governance_clean": governance_clean,
@@ -214,7 +225,7 @@ def run_deep_scan(
     analyzed = [r for r in results if _is_complete_analysis(r)]
     analyzed.sort(
         key=lambda r: (
-            r.get("verdict") == "BUY",
+            float(r.get("decision_score") or 0),
             float(r.get("quality_score") or 0),
             float(r.get("ai_conviction") or 0),
         ),
@@ -237,7 +248,7 @@ def run_deep_scan(
     print(f"[+] Live NSE filing checks: {'ON' if live_filings else 'OFF'}")
     print(f"[+] Saved checkpoint/final deep-analysis results: {path}")
     print("\nTOP SMALL/MICRO-CAP RESEARCH SHORTLIST")
-    print("-" * 110)
+    print("-" * 125)
     for i, row in enumerate(selected, 1):
-        print(f"{i:>2}. {row['symbol']:<15} {row.get('market_cap_category',''):<9} {row.get('verdict',''):<10} Score {row.get('quality_score')}  Gov {row.get('governance_grade')}  Fair ₹{row.get('fair_value')}")
+        print(f"{i:>2}. {row['symbol']:<15} {row.get('market_cap_category',''):<9} {row.get('verdict',''):<10} Decision {row.get('decision_score')}  Quality {row.get('quality_score')}  Gov {row.get('governance_grade')}  Fair ₹{row.get('fair_value')}")
     return selected
