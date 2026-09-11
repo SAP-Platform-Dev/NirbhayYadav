@@ -1,19 +1,17 @@
 """Structured financial-data provider for deep-stock analysis.
 
 Financial numbers should come from structured market data, not from an LLM
-reading annual-report tables.  The annual-report PDF remains a qualitative
+reading annual-report tables. The annual-report PDF remains a qualitative
 source for governance, forensic and management commentary.
 
-Primary probe: NSE financial-results filings.
-Fallback: public Screener.in company tables, which expose annual P&L,
-balance-sheet and cash-flow history without requiring an account for public
-company pages.
+Primary regulatory probe: NSE financial-results filings.
+Fallback: public Screener.in company tables for the five-year structured
+history used by the deterministic financial engine.
 """
 
 from __future__ import annotations
 
 import re
-from datetime import date
 from typing import Any
 
 import requests
@@ -29,7 +27,10 @@ class FinancialDataError(RuntimeError):
 class StructuredFinancialProvider:
     NSE_RESULTS_URL = "https://www.nseindia.com/api/corporates-financial-results"
     NSE_RESULTS_PAGE = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
-    SCREENER_URL = "https://www.screener.in/company/{symbol}/consolidated/"
+    SCREENER_URLS = (
+        "https://www.screener.in/company/{symbol}/consolidated/",
+        "https://www.screener.in/company/{symbol}/",
+    )
 
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0 Safari/537.36",
@@ -53,13 +54,7 @@ class StructuredFinancialProvider:
             pass
 
     def _nse_annual_probe(self, symbol: str) -> bool:
-        """Confirm that NSE exposes annual financial-result filings.
-
-        NSE's results page/XBRL feed is the preferred regulatory source.  The
-        current implementation uses it as a source probe and keeps the full
-        five-year extraction on the public structured-table fallback until an
-        XBRL taxonomy mapper is added.
-        """
+        """Confirm that NSE exposes annual financial-result filings."""
         self._warm_nse()
         try:
             response = self.session.get(
@@ -102,26 +97,22 @@ class StructuredFinancialProvider:
         if table is None:
             return {}
 
-        header_row = table.find("tr")
-        headers = [cell.get_text(" ", strip=True) for cell in header_row.find_all(["th", "td"])] if header_row else []
-        headers = [h for h in headers if h and h.lower() not in {"", "report date"}]
         result: dict[str, list[float | None]] = {}
+        header_row = table.find("tr")
+        if header_row:
+            raw_headers = [cell.get_text(" ", strip=True) for cell in header_row.find_all(["th", "td"])]
+            result["__periods__"] = raw_headers[1:] if len(raw_headers) > 1 else []
 
         for row in table.find_all("tr"):
             cells = row.find_all(["th", "td"])
             if len(cells) < 2:
                 continue
             label = cells[0].get_text(" ", strip=True)
-            if not label:
+            if not label or label.lower() == "report date":
                 continue
             values = [cls._number(cell.get_text(" ", strip=True)) for cell in cells[1:]]
             if values:
                 result[label.lower()] = values
-
-        # Prefer the actual date header from the table when available.
-        if header_row:
-            raw_headers = [cell.get_text(" ", strip=True) for cell in header_row.find_all(["th", "td"])]
-            result["__periods__"] = raw_headers[1:] if len(raw_headers) > 1 else []
         return result
 
     @staticmethod
@@ -146,7 +137,15 @@ class StructuredFinancialProvider:
         return f"FY{year}"
 
     def _screener_history(self, symbol: str) -> CompanyFinancialHistory:
-        url = self.SCREENER_URL.format(symbol=symbol)
+        last_error: Exception | None = None
+        for template in self.SCREENER_URLS:
+            try:
+                return self._parse_screener(symbol, template.format(symbol=symbol))
+            except (requests.RequestException, FinancialDataError) as exc:
+                last_error = exc
+        raise FinancialDataError(f"Could not read Screener financial tables for {symbol}: {last_error}")
+
+    def _parse_screener(self, symbol: str, url: str) -> CompanyFinancialHistory:
         response = self.session.get(url, headers={"Referer": "https://www.screener.in/"}, timeout=self.timeout)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
@@ -196,8 +195,6 @@ class StructuredFinancialProvider:
                 interest_expense=float(interest[idx] or 0.0),
             ))
 
-        # Screener pages can include a TTM column. Keep annual Mar/Apr/... rows
-        # only and use the most recent five annual observations.
         records = [r for r in records if re.match(r"^FY20\d{2}$", r.fiscal_year)]
         records = records[-5:]
         if len(records) < 3:
@@ -213,19 +210,13 @@ class StructuredFinancialProvider:
             years=records,
             source="Screener.in public structured tables",
             data_quality="MEDIUM",
-            source_notes="NSE annual-results feed was probed first; full five-year structured extraction used the public Screener company tables.",
+            source_notes="Structured annual P&L, balance-sheet and cash-flow tables; no PDF financial-table extraction used.",
         )
 
     def get_history(self, symbol: str) -> CompanyFinancialHistory:
         clean_symbol = self._symbol(symbol)
         nse_available = self._nse_annual_probe(clean_symbol)
-        try:
-            history = self._screener_history(clean_symbol)
-        except (requests.RequestException, FinancialDataError) as exc:
-            raise FinancialDataError(f"Structured financial data unavailable for {clean_symbol}: {exc}") from exc
-
+        history = self._screener_history(clean_symbol)
         if nse_available:
-            history.source = "Screener.in public structured tables; NSE annual filings available for cross-check"
-            history.data_quality = "HIGH"
-            history.source_notes = "NSE annual financial-result filings detected; five-year values sourced from structured public tables rather than PDF extraction."
+            history.source_notes += " NSE annual financial-result filings were also detected and can be used for future cross-checking."
         return history
