@@ -27,6 +27,7 @@ class FinancialDataError(RuntimeError):
 class StructuredFinancialProvider:
     NSE_RESULTS_URL = "https://www.nseindia.com/api/corporates-financial-results"
     NSE_RESULTS_PAGE = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
+    SCREENER_SEARCH_URL = "https://www.screener.in/api/company/search/"
     SCREENER_URLS = (
         "https://www.screener.in/company/{symbol}/consolidated/",
         "https://www.screener.in/company/{symbol}/",
@@ -147,14 +148,64 @@ class StructuredFinancialProvider:
         filtered = [r for r in records if re.match(r"^FY20\d{2}$", r.fiscal_year)]
         return filtered[-10:]
 
-    def _screener_history(self, symbol: str) -> CompanyFinancialHistory:
+    def _resolve_screener_symbol(self, symbol: str) -> str:
+        """Resolve an NSE/BSE-style input to Screener's canonical symbol.
+
+        Screener identifiers do not always match NSE tickers. For example,
+        CARE Ratings is entered as CARE by the user but is represented by
+        Screener under its canonical company identifier. Resolve dynamically
+        rather than maintaining a fragile hard-coded mapping.
+        """
+        clean_symbol = self._symbol(symbol)
+        try:
+            response = self.session.get(
+                self.SCREENER_SEARCH_URL,
+                params={"q": clean_symbol},
+                headers={
+                    "Referer": "https://www.screener.in/",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            results = response.json()
+            if not isinstance(results, list) or not results:
+                return clean_symbol
+
+            # Prefer an exact canonical symbol match when Screener returns one.
+            for result in results:
+                url = str(result.get("url", ""))
+                match = re.search(r"/company/([^/]+)/", url)
+                if match and match.group(1).upper() == clean_symbol.upper():
+                    return match.group(1)
+
+            # Otherwise use the first company returned by Screener search.
+            url = str(results[0].get("url", ""))
+            match = re.search(r"/company/([^/]+)/", url)
+            if match:
+                return match.group(1)
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            pass
+
+        return clean_symbol
+
+    def _screener_history(self, symbol: str, input_symbol: str | None = None) -> CompanyFinancialHistory:
         last_error: Exception | None = None
         for template in self.SCREENER_URLS:
             try:
-                return self._parse_screener(symbol, template.format(symbol=symbol))
+                history = self._parse_screener(symbol, template.format(symbol=symbol))
+                if input_symbol and symbol.upper() != input_symbol.upper():
+                    history.source_notes += (
+                        f" Screener symbol resolved from {input_symbol} to {symbol}."
+                    )
+                return history
             except (requests.RequestException, FinancialDataError) as exc:
                 last_error = exc
-        raise FinancialDataError(f"Could not read Screener financial tables for {symbol}: {last_error}")
+        display_symbol = input_symbol or symbol
+        resolved_note = f" (resolved Screener symbol: {symbol})" if input_symbol and symbol.upper() != input_symbol.upper() else ""
+        raise FinancialDataError(
+            f"Could not read Screener financial tables for {display_symbol}{resolved_note}: {last_error}"
+        )
 
     def _parse_screener(self, symbol: str, url: str) -> CompanyFinancialHistory:
         response = self.session.get(url, headers={"Referer": "https://www.screener.in/"}, timeout=self.timeout)
@@ -231,7 +282,8 @@ class StructuredFinancialProvider:
     def get_history(self, symbol: str) -> CompanyFinancialHistory:
         clean_symbol = self._symbol(symbol)
         nse_available = self._nse_annual_probe(clean_symbol)
-        history = self._screener_history(clean_symbol)
+        screener_symbol = self._resolve_screener_symbol(clean_symbol)
+        history = self._screener_history(screener_symbol, input_symbol=clean_symbol)
         if nse_available:
             history.source_notes += " NSE annual financial-result filings were also detected and can be used for future cross-checking."
         return history
