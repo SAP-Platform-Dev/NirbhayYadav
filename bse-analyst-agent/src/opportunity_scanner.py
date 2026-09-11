@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import sys
 import time
 from typing import Any
 
@@ -123,6 +124,20 @@ class OpportunityScanner:
         with open(_cache_path(output_dir), "w", encoding="utf-8") as fh:
             json.dump(cache, fh, indent=2)
 
+    @staticmethod
+    def _show_progress(current: int, total: int, width: int = 34) -> None:
+        """Render a compact in-place progress bar for the quality-check loop."""
+        if total <= 0:
+            return
+        ratio = current / total
+        filled = int(width * ratio)
+        bar = "#" * filled + "-" * (width - filled)
+        percent = ratio * 100
+        sys.stdout.write(f"\r[*] Quality checks: |{bar}| {percent:6.2f}% ({current}/{total})")
+        sys.stdout.flush()
+        if current >= total:
+            sys.stdout.write("\n")
+
     def _score(self, row: dict[str, Any]) -> dict[str, Any]:
         revenue_growth = _pct(row.get("revenueGrowth"))
         earnings_growth = _pct(row.get("earningsGrowth"))
@@ -215,10 +230,12 @@ class OpportunityScanner:
         failed = 0
 
         print(f"[+] Quality checks queued for {len(pool)} {segment} candidates")
+        self._show_progress(0, len(pool))
 
         for index, row in enumerate(pool, 1):
             symbol = str(row.get("symbol") or "").upper()
             if not symbol:
+                self._show_progress(index, len(pool))
                 continue
             if symbol in cache:
                 fundamentals = cache[symbol]
@@ -238,8 +255,8 @@ class OpportunityScanner:
                 **fundamentals,
             })
             row.update(self._score(row))
-            if index % 100 == 0:
-                print(f"[*] Quality checked {index}/{len(pool)}")
+            if index % 10 == 0 or index == len(pool):
+                self._show_progress(index, len(pool))
 
         self._save_cache(output_dir, cache)
         pool.sort(key=lambda row: (float(row.get("opportunity_score") or 0.0), float(row.get("avg_daily_value_cr") or 0.0)), reverse=True)
