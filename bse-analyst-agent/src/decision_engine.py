@@ -35,9 +35,6 @@ def calculate_investment_decision(
         elif fair_value > 0 and price <= fair_value:
             valuation_score = 6
             valuation_state = "BELOW_FAIR_VALUE"
-        elif fair_value > 0 and price <= fair_value * 1.15:
-            valuation_score = 3
-            valuation_state = "NEAR_FAIR_VALUE"
         else:
             valuation_state = "ABOVE_FAIR_VALUE"
 
