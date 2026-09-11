@@ -14,6 +14,10 @@ from dotenv import load_dotenv
 
 warnings.filterwarnings("ignore", message=r".*automatic function calling \(AFC\).*")
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 load_dotenv()
 
 from src.deep_scanner import run_deep_scan

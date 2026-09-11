@@ -6,6 +6,16 @@ import csv
 import os
 from typing import Any, Dict, List
 
+def _is_complete_analysis(result: Dict[str, Any]) -> bool:
+    """Return True only when a candidate contains the final research payload."""
+    return (
+        result.get("status") == "ANALYZED"
+        and bool(result.get("verdict"))
+        and result.get("quality_score") is not None
+        and result.get("ai_conviction") is not None
+        and bool(str(result.get("thesis") or "").strip())
+    )
+
 from .agent import AnalysisOrchestrator
 from .corporate_risk import CorporateRiskEngine, extract_announcements_from_rows
 from .doc_parser import FinancialDocParser
@@ -14,7 +24,15 @@ from .nse_corporate_filings import NSECorporateFilings
 from .nse_downloader import NSEDownloader
 from .run_history import record_run, summarize_results
 
-
+def _is_complete_analysis(result: Dict[str, Any]) -> bool:
+    """Return True only when a candidate contains the final research payload."""
+    return (
+        result.get("status") == "ANALYZED"
+        and bool(result.get("verdict"))
+        and result.get("quality_score") is not None
+        and result.get("ai_conviction") is not None
+        and bool(str(result.get("thesis") or "").strip())
+    )
 class DeepScannerEngine:
     """Run candidate-level research without depending on menu or CLI code."""
 
@@ -47,7 +65,7 @@ class DeepScannerEngine:
                 announcements=extract_announcements_from_rows([*filing_data.get("announcements", []), *filing_data.get("pit_risk_rows", [])]),
             )
             if corporate.hard_fail:
-                return {**row, "status": "CORPORATE_RISK_REJECT", "verdict": "AVOID", "corporate_risk_score": corporate.risk_score, "governance_grade": corporate.governance_grade, "corporate_risk_flags": ";".join(corporate.risk_flags), "corporate_data_gaps": ";".join(corporate.data_gaps), "promoter_holding_pct": promoter_holding, "promoter_pledge_pct": promoter_pledge, "promoter_change_pct": promoter_change, "shareholding_as_on": filing_data.get("shareholding", {}).get("as_on_date"), "shareholding_xbrl_url": filing_data.get("shareholding", {}).get("xbrl_url"), "filing_source": filing_data.get("source", "NSE"), "error": "Rejected before deep analysis due to a hard corporate-risk signal"}
+                return {**row, "status": "CORPORATE_RISK_REJECT","stage": "CORPORATE_RISK", "verdict": "AVOID", "corporate_risk_score": corporate.risk_score, "governance_grade": corporate.governance_grade, "corporate_risk_flags": ";".join(corporate.risk_flags), "corporate_data_gaps": ";".join(corporate.data_gaps), "promoter_holding_pct": promoter_holding, "promoter_pledge_pct": promoter_pledge, "promoter_change_pct": promoter_change, "shareholding_as_on": filing_data.get("shareholding", {}).get("as_on_date"), "shareholding_xbrl_url": filing_data.get("shareholding", {}).get("xbrl_url"), "filing_source": filing_data.get("source", "NSE"), "error": "Rejected before deep analysis due to a hard corporate-risk signal"}
             pdf_path = self.downloader.download_report(symbol)
             if not pdf_path:
                 return {**row, "status": "NO_REPORT", "error": "Annual report unavailable"}
@@ -70,7 +88,15 @@ class DeepScannerEngine:
             raise FileNotFoundError(f"Stage-1 CSV not found: {input_csv}. Run --scan first.")
         with open(input_csv, newline="", encoding="utf-8") as fh:
             rows = list(csv.DictReader(fh))[:deep_limit]
-        results = [self.analyze_candidate(row, live_filings=live_filings) for row in rows]
+        results = [
+    analyze_candidate(
+        row,
+        self.orchestrator,
+        self.filings_client,
+        live_filings,
+    )
+    for row in rows
+]
         analyzed = [r for r in results if r.get("status") == "ANALYZED"]
         analyzed.sort(key=lambda r: (r.get("verdict") == "BUY", float(r.get("quality_score") or 0), float(r.get("ai_conviction") or 0)), reverse=True)
         selected = analyzed[:top]
@@ -83,6 +109,13 @@ class DeepScannerEngine:
         record_run("DEEP_SCAN", summarize_results(results), output_dir=output_dir, notes=f"live_filings={'ON' if live_filings else 'OFF'}; top={top}; deep_limit={deep_limit}")
         print(f"[+] Stage-2 candidates processed: {len(rows)}")
         print(f"[+] Stage-2 fully analyzed: {len(analyzed)}")
+        summary = summarize_results(results)
+        print(f"ANALYZED={summary['analyzed']}")
+        print(f"ERROR={summary['errors']}")
+        for result in results:
+             if result.get("status") == "ERROR":
+               print(f"[ERROR] {result.get('error', '')}")
+        print(f"[+] Live NSE filing checks: {'ON' if live_filings else 'OFF'}")
         print(f"[+] Live NSE filing checks: {'ON' if live_filings else 'OFF'}")
         print(f"[+] Saved full deep-analysis results: {path}")
         print("\nTOP SMALL/MICRO-CAP RESEARCH SHORTLIST")
