@@ -46,7 +46,7 @@ def _scan_nse() -> None:
 
 
 def _corporate_risk() -> None:
-    from src.corporate_risk import assess_corporate_risk
+    from src.corporate_risk import assess_corporate_risk, extract_announcements_from_rows
     from src.nse_corporate_filings import NSECorporateFilings
 
     symbol = input("NSE symbol: ").strip().upper()
@@ -58,11 +58,15 @@ def _corporate_risk() -> None:
     client = NSECorporateFilings()
     print(f"\n[*] Fetching live NSE corporate risk data for {symbol}...")
     data = client.risk_inputs(symbol)
+    shareholding = data.get("shareholding", {})
+    announcements = extract_announcements_from_rows(data.get("announcements", []))
+    announcements.extend(data.get("pit_risk_rows", []))
+
     result = assess_corporate_risk(
-        symbol,
-        shareholding=data.get("shareholding", {}),
-        announcements=data.get("announcements", []),
-        pit=data.get("pit_risk_rows", data.get("pit", [])),
+        promoter_holding_pct=data.get("promoter_holding_pct", shareholding.get("promoter_holding_pct")),
+        promoter_pledge_pct=data.get("promoter_pledge_pct", shareholding.get("promoter_pledge_pct")),
+        promoter_change_pct=data.get("promoter_change_pct", shareholding.get("promoter_change_pct")),
+        announcements=announcements,
     )
 
     print("\n" + "=" * 60)
@@ -152,30 +156,29 @@ def show_menu() -> None:
         print("        NSE EQUITY RESEARCH & 10X OPPORTUNITY AGENT")
         print("=" * 64)
         print("\nDISCOVERY")
-        print("  1. Scan NSE Universe")
-        print("  2. Find Small / Micro Cap Candidates")
+        print("  1. Find Small / Micro Cap Candidates")
         print("\nRESEARCH")
-        print("  3. Analyse a Stock")
-        print("  4. Corporate Risk Check")
+        print("  2. Analyse a Stock")
+        print("  3. Corporate Risk Check")
         print("\nSCANNER")
-        print("  5. Run Full Small / Micro Cap Deep Scan")
+        print("  4. Run Full Small / Micro Cap Deep Scan")
         print("\nRESULTS")
-        print("  6. View Latest Results")
+        print("  5. View Latest Results")
         print("\nSYSTEM")
         print("  0. Exit")
         print("=" * 64)
 
         choice = input("Choose an option: ").strip()
         try:
-            if choice in {"1", "2"}:
+            if choice == "1":
                 _scan_nse()
-            elif choice == "3":
+            elif choice == "2":
                 _analyse_stock()
-            elif choice == "4":
+            elif choice == "3":
                 _corporate_risk()
-            elif choice == "5":
+            elif choice == "4":
                 _deep_scan()
-            elif choice == "6":
+            elif choice == "5":
                 _view_latest_results()
             elif choice == "0":
                 print("\nGoodbye.")
