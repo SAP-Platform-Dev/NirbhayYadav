@@ -30,7 +30,7 @@ def run_corporate_risk_only(symbol: str, report_years: int = 10, live_filings: b
     risk, alongside current NSE corporate/PIT/shareholding signals.
     """
     symbol = symbol.upper().strip()
-    print(f"\n{'=' * 72}\n CORPORATE RISK ONLY | {symbol}\n{'=' * 72}")
+    print(f"{'=' * 72} CORPORATE RISK ONLY | {symbol}{'=' * 72}")
     print(f"[*] Annual-report history requested: {report_years} years")
 
     filing_data = {"announcements": [], "pit_risk_rows": [], "shareholding": {}}
@@ -86,11 +86,11 @@ def run_corporate_risk_only(symbol: str, report_years: int = 10, live_filings: b
     if report_gap:
         corporate.data_gaps.append(report_gap)
 
-    print("\n" + "=" * 72)
+    print("" + "=" * 72)
     print("CORPORATE GOVERNANCE RISK")
     print("=" * 72)
 
-    print("\nOVERALL VERDICT")
+    print("OVERALL VERDICT")
     print(f"  Governance Grade   : {corporate.governance_grade}")
     print(f"  Numerical Risk     : {corporate.risk_score}/100")
     print(f"  Annual Report Risk : {corporate.annual_report_score}/100")
@@ -99,7 +99,7 @@ def run_corporate_risk_only(symbol: str, report_years: int = 10, live_filings: b
         f"{'YES' if corporate.hard_fail else 'NO'}"
     )
 
-    print("\nWHY?")
+    print("WHY?")
 
     if corporate.hard_fail:
         critical_flags = []
@@ -130,7 +130,7 @@ def run_corporate_risk_only(symbol: str, report_years: int = 10, live_filings: b
     else:
         print("  No critical governance override detected.")
 
-    print("\nKEY CONCERNS")
+    print("KEY CONCERNS")
 
     concerns_found = False
 
@@ -167,7 +167,7 @@ def run_corporate_risk_only(symbol: str, report_years: int = 10, live_filings: b
     if not concerns_found:
         print("  None identified.")
 
-    print("\nPOSITIVE SIGNALS")
+    print("POSITIVE SIGNALS")
 
     if corporate.positive_signals:
         for signal in corporate.positive_signals:
@@ -175,7 +175,7 @@ def run_corporate_risk_only(symbol: str, report_years: int = 10, live_filings: b
     else:
         print("  None identified.")
 
-    print("\nDATA LIMITATIONS")
+    print("DATA LIMITATIONS")
 
     if corporate.data_gaps:
         for gap in corporate.data_gaps:
@@ -183,7 +183,7 @@ def run_corporate_risk_only(symbol: str, report_years: int = 10, live_filings: b
     else:
         print("  None identified.")
 
-    print("\n10-YEAR HISTORY")
+    print("10-YEAR HISTORY")
     print(
         "  FY       Audit      Related Party    "
         "Contingent Risk    Flags"
@@ -277,7 +277,7 @@ def run_corporate_risk_only(symbol: str, report_years: int = 10, live_filings: b
             f"{flag_display}"
         )
 
-    print("\nINVESTOR INTERPRETATION")
+    print("INVESTOR INTERPRETATION")
 
     if corporate.hard_fail:
         print("  Critical forensic/governance trigger detected.")
@@ -319,47 +319,47 @@ def save_summary_to_notepad(symbol, forensics, ratios, quality, valuation, recom
     filepath = os.path.join(output_dir, f"{symbol.upper()}_Investment_Summary_{timestamp}.txt")
     divider, sub = "=" * 70, "-" * 70
     with open(filepath, "w", encoding="utf-8") as f:
-        f.write(f"{divider}\nFIVE-YEAR EQUITY RESEARCH INVESTMENT MEMO\n")
-        f.write(f"Company: {symbol.upper()} | Date: {datetime.now().strftime('%d-%b-%Y %H:%M:%S')}\n{divider}\n\n")
-        f.write(f"[FINAL VERDICT]: {recommendation['verdict']}\n")
-        f.write(f"[DETERMINISTIC QUALITY SCORE]: {quality['score_100']} / 100\n")
-        f.write(f"[AI THESIS CONVICTION]: {memo.conviction_score} / 10\n")
-        f.write(f"[GOVERNANCE]: {'PASSED' if memo.governance_clearance else 'FAILED / REVIEW'}\n")
-        f.write(f"[DECISION LOGIC]: {recommendation['reason']}\n\n")
-        f.write(f"{sub}\nEXECUTIVE THESIS\n{sub}\n{memo.executive_summary.strip()}\n\n")
-        f.write(f"{sub}\nFIVE-YEAR FUNDAMENTALS\n{sub}\n")
+        f.write(f"{divider}FIVE-YEAR EQUITY RESEARCH INVESTMENT MEMO")
+        f.write(f"Company: {symbol.upper()} | Date: {datetime.now().strftime('%d-%b-%Y %H:%M:%S')}{divider}")
+        f.write(f"[FINAL VERDICT]: {recommendation['verdict']}")
+        f.write(f"[DETERMINISTIC QUALITY SCORE]: {quality['score_100']} / 100")
+        f.write(f"[AI THESIS CONVICTION]: {memo.conviction_score} / 10")
+        f.write(f"[GOVERNANCE]: {'PASSED' if memo.governance_clearance else 'FAILED / REVIEW'}")
+        f.write(f"[DECISION LOGIC]: {recommendation['reason']}")
+        f.write(f"{sub}EXECUTIVE THESIS{sub}{memo.executive_summary.strip()}")
+        f.write(f"{sub}FIVE-YEAR FUNDAMENTALS{sub}")
         for metric, value in ratios.items():
-            if metric != "hurdles_passed": f.write(f"  • {metric:<30}: {value}\n")
-        f.write("\nHurdles:\n")
-        for check, passed in ratios.get("hurdles_passed", {}).items(): f.write(f"  • {check.replace('_', ' ').title():<30}: {'PASS [✓]' if passed else 'FAIL [X]'}\n")
-        f.write(f"\n{sub}\nQUALITY SCORE\n{sub}\n")
-        for component, points in quality["components"].items(): f.write(f"  • {component.replace('_', ' ').title():<30}: {points:>2} / 20\n")
-        f.write(f"  TOTAL: {quality['score_100']} / 100\n")
-        f.write(f"\n{sub}\nVALUATION\n{sub}\n")
+            if metric != "hurdles_passed": f.write(f"  • {metric:<30}: {value}")
+        f.write("Hurdles:")
+        for check, passed in ratios.get("hurdles_passed", {}).items(): f.write(f"  • {check.replace('_', ' ').title():<30}: {'PASS [✓]' if passed else 'FAIL [X]'}")
+        f.write(f"{sub}QUALITY SCORE{sub}")
+        for component, points in quality["components"].items(): f.write(f"  • {component.replace('_', ' ').title():<30}: {points:>2} / 20")
+        f.write(f"  TOTAL: {quality['score_100']} / 100")
+        f.write(f"{sub}VALUATION{sub}")
         if valuation.get("available"):
             for key, value in valuation.items():
-                if key != "available": f.write(f"  • {key.replace('_', ' ').title():<30}: {value}\n")
-        else: f.write(f"  • {valuation.get('reason', 'Not calculated.')}\n")
-        f.write(f"\n{sub}\nFORENSIC & GOVERNANCE\n{sub}\n")
-        f.write(f"  • Audit Opinion             : {forensics.audit_opinion_type}\n")
-        f.write(f"  • Contingent Liability Risk : {forensics.contingent_liability_risk}\n")
-        f.write(f"  • Related Party Risk        : {forensics.related_party_risk}\n\n")
-        f.write("  Key Audit Matters:\n")
-        for item in forensics.key_audit_matters or ["None specified."]: f.write(f"    - {item}\n")
-        f.write("\n  Forensic Red Flags:\n")
-        for item in forensics.forensic_red_flags or ["None detected."]: f.write(f"    ! {item}\n")
-        f.write(f"\n{sub}\nFINANCIAL STRENGTHS\n{sub}\n")
-        for item in memo.financial_strengths: f.write(f"  [+] {item}\n")
-        f.write(f"\n{sub}\nCRITICAL RISKS\n{sub}\n")
-        for item in memo.critical_risks: f.write(f"  [-] {item}\n")
-        f.write(f"\n{divider}\nEnd of Report\n")
+                if key != "available": f.write(f"  • {key.replace('_', ' ').title():<30}: {value}")
+        else: f.write(f"  • {valuation.get('reason', 'Not calculated.')}")
+        f.write(f"{sub}FORENSIC & GOVERNANCE{sub}")
+        f.write(f"  • Audit Opinion             : {forensics.audit_opinion_type}")
+        f.write(f"  • Contingent Liability Risk : {forensics.contingent_liability_risk}")
+        f.write(f"  • Related Party Risk        : {forensics.related_party_risk}")
+        f.write("  Key Audit Matters:")
+        for item in forensics.key_audit_matters or ["None specified."]: f.write(f"    - {item}")
+        f.write("  Forensic Red Flags:")
+        for item in forensics.forensic_red_flags or ["None detected."]: f.write(f"    ! {item}")
+        f.write(f"{sub}FINANCIAL STRENGTHS{sub}")
+        for item in memo.financial_strengths: f.write(f"  [+] {item}")
+        f.write(f"{sub}CRITICAL RISKS{sub}")
+        for item in memo.critical_risks: f.write(f"  [-] {item}")
+        f.write(f"{divider}End of Report")
     return filepath
 
 
 def run_universe_scan(refresh=False, top=50, limit=None, output_dir="./outputs"):
     """Stage 1: exchange-level discovery only; not an investment recommendation."""
     cfg = SmallMicrocapConfig(); universe = NSEUniverse()
-    print("\n[*] Discovering NSE equity universe...")
+    print("[*] Discovering NSE equity universe...")
     rows = universe.discover(limit=limit, refresh=refresh); candidates = []
     for row in rows:
         market_cap, price, traded_value = row.get("market_cap_cr"), row.get("price"), row.get("avg_daily_value_cr")
@@ -374,23 +374,23 @@ def run_universe_scan(refresh=False, top=50, limit=None, output_dir="./outputs")
         fields = ["symbol", "company_name", "market_cap_category", "market_cap_cr", "price", "avg_daily_value_cr", "source"]
         writer = csv.DictWriter(fh, fieldnames=fields); writer.writeheader(); writer.writerows({k: row.get(k) for k in fields} for row in selected)
     print(f"[+] NSE rows collected: {len(rows)}"); print(f"[+] Candidates passing market/liquidity filters: {len(candidates)}"); print(f"[+] Saved top {len(selected)} candidates to: {path}")
-    print("\nTOP CANDIDATES — Stage 1 only (NOT investment recommendations)"); print("-" * 95)
+    print("TOP CANDIDATES — Stage 1 only (NOT investment recommendations)"); print("-" * 95)
     for i, row in enumerate(selected, 1): print(f"{i:>2}. {row['symbol']:<15} {row['market_cap_category']:<9} MCap ₹{float(row['market_cap_cr']):>9.0f} Cr  Price ₹{float(row['price']):>8.2f}  Traded ₹{float(row['avg_daily_value_cr']):>7.2f} Cr")
     return selected
 
 
 def main(symbol, price=None, shares_cr=None, target_pe=25.0, mos=20.0):
-    symbol = symbol.upper().strip(); print(f"\n==========================================\n Starting V2 NSE Analysis Agent | {symbol}\n==========================================\n")
+    symbol = symbol.upper().strip(); print(f"========================================== Starting V2 NSE Analysis Agent | {symbol}==========================================")
     pdf_path = NSEDownloader().download_report(symbol)
     if not pdf_path: print(f"[!] Could not download annual report for {symbol}. Exiting."); sys.exit(1)
     parser = FinancialDocParser(pdf_path); sections = parser.extract_critical_sections(); orchestrator = AnalysisOrchestrator()
-    print("\n[*] Running forensic governance audit..."); forensics = orchestrator.audit_forensics(sections["auditor_report"], sections["notes"])
+    print("[*] Running forensic governance audit..."); forensics = orchestrator.audit_forensics(sections["auditor_report"], sections["notes"])
     print("[*] Extracting five-year financial history..."); history = orchestrator.extract_metrics_payload(sections["financial_statements"]); ratios = calculate_fundamental_ratios(history)
     governance_clean = (forensics.audit_opinion_type.lower().startswith("unmodified") and forensics.contingent_liability_risk.lower().startswith("low") and forensics.related_party_risk.lower().startswith("low") and not forensics.forensic_red_flags)
     quality = calculate_quality_score(ratios, governance_clean=governance_clean); valuation = {"available": False, "reason": "Supply --price and --shares-cr to calculate transparent P/E fair value."}
     if price is not None and shares_cr is not None: valuation = calculate_pe_valuation(price, shares_cr, history.years[-1].pat, ratios["PAT CAGR (%)"], target_pe, mos)
     print("[*] Generating investment thesis..."); memo = orchestrator.run_investment_committee(forensics, ratios, quality, valuation); recommendation = determine_final_recommendation(quality, ratios, governance_clean, valuation); memo.verdict = recommendation["verdict"]
-    print("\n" + "=" * 60); print(f"FINAL VERDICT: {recommendation['verdict']}"); print(f"QUALITY SCORE: {quality['score_100']}/100"); print(f"AI THESIS CONVICTION: {memo.conviction_score}/10")
+    print("" + "=" * 60); print(f"FINAL VERDICT: {recommendation['verdict']}"); print(f"QUALITY SCORE: {quality['score_100']}/100"); print(f"AI THESIS CONVICTION: {memo.conviction_score}/10")
     if valuation.get("available"): print(f"FAIR VALUE: ₹{valuation['fair_value']} | BUY BELOW: ₹{valuation['buy_below']}")
     print("=" * 60); saved_file = save_summary_to_notepad(symbol, forensics, ratios, quality, valuation, recommendation, memo); print(f"[+] Summary saved: {saved_file}")
     try: os.system(f'notepad "{saved_file}"')
@@ -398,8 +398,16 @@ def main(symbol, price=None, shares_cr=None, target_pe=25.0, mos=20.0):
 
 
 if __name__ == "__main__":
-    cli = argparse.ArgumentParser(description="Indian equity research agent and small/micro-cap scanner")
-    cli.add_argument("symbol", nargs="?", default="TCS", help="NSE symbol for deep analysis")
+    cli = argparse.ArgumentParser(
+        description="Indian equity research agent and small/micro-cap scanner"
+    )
+
+    cli.add_argument(
+        "symbol",
+        nargs="?",
+        default=None,
+        help="NSE symbol for deep analysis"
+    )
     cli.add_argument("--scan", action="store_true", help="Stage 1: discover NSE small/micro-cap candidates")
     cli.add_argument("--deep-scan", action="store_true", help="Stage 2: deeply analyze the Stage-1 CSV")
     cli.add_argument("--corporate-risk", action="store_true", help="Corporate-risk-only test using up to ten annual reports")
@@ -414,12 +422,122 @@ if __name__ == "__main__":
     cli.add_argument("--shares-cr", type=float, help="Shares outstanding in crore for single-stock valuation")
     cli.add_argument("--target-pe", type=float, default=25.0, help="Target P/E multiple")
     cli.add_argument("--mos", type=float, default=20.0, help="Margin of safety percentage")
+
     args = cli.parse_args()
+
+    # Interactive menu when no command-line arguments are supplied.
+    if len(sys.argv) == 1:
+        print("" + "=" * 60)
+        print("        NSE EQUITY RESEARCH AGENT")
+        print("=" * 60)
+        print()
+        print("1. Analyze a stock")
+        print("2. Corporate governance risk")
+        print("3. Small / micro-cap universe scan")
+        print("4. Deep scan universe")
+        print("5. Exit")
+        print()
+
+        choice = input("Select an option [1-5]: ").strip()
+
+        if choice == "1":
+            symbol = input("Enter NSE symbol: ").strip()
+
+            if not symbol:
+                print("[!] Symbol is required.")
+                sys.exit(1)
+
+            main(
+                symbol,
+                args.price,
+                args.shares_cr,
+                args.target_pe,
+                args.mos,
+            )
+
+        elif choice == "2":
+            symbol = input("Enter NSE symbol: ").strip()
+
+            if not symbol:
+                print("[!] Symbol is required.")
+                sys.exit(1)
+
+            years_input = input("Number of annual reports [10]: ").strip()
+
+            try:
+                years = int(years_input) if years_input else 10
+            except ValueError:
+                print("[!] Invalid number of years.")
+                sys.exit(1)
+
+            years = max(1, min(years, 10))
+
+            run_corporate_risk_only(
+                symbol,
+                report_years=years,
+                live_filings=True,
+            )
+
+        elif choice == "3":
+            run_universe_scan(
+                refresh=False,
+                top=50,
+                limit=None,
+            )
+
+        elif choice == "4":
+            run_deep_scan(
+                input_csv="./outputs/small_microcap_universe.csv",
+                top=50,
+                deep_limit=20,
+                live_filings=True,
+            )
+
+        elif choice == "5":
+            print("Exiting.")
+            sys.exit(0)
+
+        else:
+            print("[!] Invalid option.")
+            sys.exit(1)
+
+        sys.exit(0)
+
+    # Command-line modes.
     if args.corporate_risk:
-        run_corporate_risk_only(args.symbol, report_years=max(1, min(args.corporate_years, 10)), live_filings=not args.no_live_filings)
+        if not args.symbol:
+            cli.error("--corporate-risk requires a symbol")
+
+        run_corporate_risk_only(
+            args.symbol,
+            report_years=max(1, min(args.corporate_years, 10)),
+            live_filings=not args.no_live_filings,
+        )
+
     elif args.deep_scan:
-        run_deep_scan(input_csv=args.input_csv, top=args.top, deep_limit=args.deep_limit, live_filings=not args.no_live_filings)
+        run_deep_scan(
+            input_csv=args.input_csv,
+            top=args.top,
+            deep_limit=args.deep_limit,
+            live_filings=not args.no_live_filings,
+        )
+
     elif args.scan:
-        run_universe_scan(refresh=args.refresh, top=args.top, limit=args.limit)
+        run_universe_scan(
+            refresh=args.refresh,
+            top=args.top,
+            limit=args.limit,
+        )
+
+    elif args.symbol:
+        main(
+            args.symbol,
+            args.price,
+            args.shares_cr,
+            args.target_pe,
+            args.mos,
+        )
+
     else:
-        main(args.symbol, args.price, args.shares_cr, args.target_pe, args.mos)
+        cli.print_help()
+
