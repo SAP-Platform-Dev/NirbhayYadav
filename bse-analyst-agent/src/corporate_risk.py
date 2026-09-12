@@ -1,11 +1,11 @@
-"""Cheap deterministic corporate-risk pre-screening for small/micro-caps.
+"""Deterministic corporate-risk engine for small/micro-cap research.
 
-The scanner intentionally treats missing exchange data as UNKNOWN rather than safe.
-It is designed to run before expensive Gemini analysis.
+Corporate risk combines current exchange signals with historical annual-report
+forensic evidence. Missing information is recorded as UNKNOWN rather than
+silently treated as clean.
 """
 
 from dataclasses import dataclass, field
-import re
 from typing import Any, Iterable, Mapping
 
 
@@ -16,14 +16,16 @@ class CorporateRiskResult:
     positive_signals: list[str] = field(default_factory=list)
     data_gaps: list[str] = field(default_factory=list)
     risk_score: int = 0
+    annual_report_score: int = 0
+    reports_scanned: int = 0
 
     @property
     def governance_grade(self) -> str:
-        if self.hard_fail or self.risk_score >= 50:
+        if self.hard_fail or self.risk_score >= 60:
             return "D"
-        if self.risk_score >= 30:
+        if self.risk_score >= 45:
             return "C"
-        if self.risk_score >= 15:
+        if self.risk_score >= 25:
             return "B"
         return "A"
 
@@ -53,47 +55,115 @@ def _announcement_risk(subject: str, details: str) -> tuple[int, list[str], bool
     hard_fail = False
 
     hard_patterns = {
-        "auditor resignation": 35,
-        "resignation of auditor": 35,
-        "qualified opinion": 40,
-        "adverse opinion": 50,
-        "disclaimer of opinion": 50,
+        "adverse opinion": 60,
+        "disclaimer of opinion": 60,
         "fraud": 50,
-        "forensic audit": 40,
-        "default": 35,
-        "insolvency": 50,
-        "delisting": 50,
+        "forensic audit": 45,
+        "insolvency": 60,
+        "delisting": 60,
+        "auditor resignation": 40,
+        "resignation of auditor": 40,
+        "qualified opinion": 45,
+        "default": 40,
     }
     medium_patterns = {
-        "change in auditor": 20,
-        "related party": 15,
-        "preferential": 15,
-        "preferential allotment": 20,
-        "warrant": 15,
-        "convertible": 15,
-        "qip": 8,
-        "fund raising": 5,
-        "promoter sale": 15,
-        "promoter pledge": 20,
-        "pledge": 15,
-        "resignation of director": 10,
-        "regulatory order": 20,
-        "sebi": 10,
-        "stock exchange fine": 15,
+        "change in auditor": 15,
+        "related party": 10,
+        "preferential allotment": 15,
+        "preferential": 10,
+        "warrant": 10,
+        "convertible": 10,
+        "qip": 6,
+        "fund raising": 4,
+        "promoter sale": 12,
+        "promoter pledge": 15,
+        "pledge": 10,
+        "resignation of director": 8,
+        "regulatory order": 15,
+        "sebi": 8,
+        "stock exchange fine": 12,
     }
 
     for term, points in hard_patterns.items():
         if term in text:
             flags.append(f"Corporate filing: {term}")
             score += points
-            if points >= 40:
-                hard_fail = True
+            hard_fail = True
     for term, points in medium_patterns.items():
         if term in text and not any(term in flag.lower() for flag in flags):
             flags.append(f"Corporate filing: {term}")
             score += points
 
     return min(score, 100), flags, hard_fail
+
+
+def _annual_report_risk(audits: Iterable[Mapping[str, Any]]) -> tuple[int, list[str], list[str], bool, int]:
+    """Score up to ten years of structured annual-report forensic audits.
+
+    Recent reports carry more weight, but a severe historical event remains a
+    hard fail because governance failures cannot be made safe merely by age.
+    """
+    rows = list(audits or [])[:10]
+    if not rows:
+        return 0, [], ["Annual-report forensic history unavailable"], False, 0
+
+    score_total = 0.0
+    weight_total = 0.0
+    flags: list[str] = []
+    positives: list[str] = []
+    hard_fail = False
+
+    for index, audit in enumerate(rows):
+        weight = max(0.55, 1.0 - (index * 0.05))
+        weight_total += weight
+        year = str(audit.get("fiscal_year") or audit.get("year") or f"report-{index + 1}")
+        report_score = 0.0
+
+        opinion = _text(audit.get("audit_opinion_type"))
+        if "adverse" in opinion or "disclaimer" in opinion:
+            report_score += 60
+            hard_fail = True
+            flags.append(f"{year}: {audit.get('audit_opinion_type')}")
+        elif "qualified" in opinion:
+            report_score += 45
+            hard_fail = True
+            flags.append(f"{year}: Qualified audit opinion")
+        elif "unmodified" in opinion or "clean" in opinion:
+            positives.append(f"{year}: Clean/unmodified audit opinion")
+        elif opinion:
+            report_score += 15
+            flags.append(f"{year}: Unclear audit opinion: {audit.get('audit_opinion_type')}")
+
+        contingent = _text(audit.get("contingent_liability_risk"))
+        if contingent in {"high", "very high", "critical"}:
+            report_score += 20
+            flags.append(f"{year}: High contingent-liability risk")
+        elif contingent in {"medium", "moderate"}:
+            report_score += 10
+            flags.append(f"{year}: Moderate contingent-liability risk")
+
+        related = _text(audit.get("related_party_risk"))
+        if related in {"high", "very high", "critical"}:
+            report_score += 20
+            flags.append(f"{year}: High related-party risk")
+        elif related in {"medium", "moderate"}:
+            report_score += 10
+            flags.append(f"{year}: Moderate related-party risk")
+
+        red_flags = audit.get("forensic_red_flags") or []
+        if isinstance(red_flags, str):
+            red_flags = [red_flags]
+        red_flags = [str(x).strip() for x in red_flags if str(x).strip()]
+        if red_flags:
+            report_score += min(25, 8 * len(red_flags))
+            flags.append(f"{year}: {len(red_flags)} forensic red flag(s)")
+            if any(_keywords(x, ["fraud", "misstatement", "diversion", "fabricat", "forgery"]) for x in red_flags):
+                hard_fail = True
+
+        score_total += min(report_score, 100) * weight
+
+    score = round(score_total / weight_total) if weight_total else 0
+    return min(score, 100), flags, positives, hard_fail, len(rows)
 
 
 def assess_corporate_risk(
@@ -104,11 +174,9 @@ def assess_corporate_risk(
     auditor_status: str | None = None,
     related_party_risk: str | None = None,
     announcements: Iterable[Mapping[str, Any]] | None = None,
+    annual_report_audits: Iterable[Mapping[str, Any]] | None = None,
 ) -> CorporateRiskResult:
-    """Evaluate mechanical governance signals before AI analysis.
-
-    Expected announcement keys: ``subject``, ``details`` and optionally ``date``.
-    """
+    """Evaluate current exchange signals plus historical annual-report evidence."""
     result = CorporateRiskResult()
 
     pledge = _num(promoter_pledge_pct)
@@ -173,6 +241,22 @@ def assess_corporate_risk(
         result.risk_score += points
         result.risk_flags.extend(flags)
         result.hard_fail = result.hard_fail or hard
+
+    annual_score, annual_flags, annual_positives, annual_hard_fail, report_count = _annual_report_risk(annual_report_audits)
+    result.annual_report_score = annual_score
+    result.reports_scanned = report_count
+    result.risk_flags.extend(annual_flags)
+    result.positive_signals.extend(annual_positives)
+    result.hard_fail = result.hard_fail or annual_hard_fail
+
+    # Current exchange evidence is slightly more important than older annual
+    # reports, while historical reports prevent recent clean periods from
+    # hiding a long-running governance problem.
+    exchange_score = min(result.risk_score, 100)
+    if report_count:
+        result.risk_score = round((exchange_score * 0.55) + (annual_score * 0.45))
+    else:
+        result.risk_score = exchange_score
 
     result.risk_score = min(result.risk_score, 100)
     return result
