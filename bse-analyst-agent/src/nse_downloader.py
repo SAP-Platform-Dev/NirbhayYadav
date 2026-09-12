@@ -1,23 +1,39 @@
-"""Annual-report downloader with NSE primary source and public-web fallback."""
+import re
+
+from pathlib import Path
+"""
+src/nse_downloader.py
+Automated downloader for Indian Annual Reports via NSE India API.
+Includes local file caching, PDF validation, and multi-year report support.
+"""
 
 import os
-import re
-from typing import Optional
-from urllib.parse import unquote
-
+import shutil
+import tempfile
+import zipfile
 import requests
-from bs4 import BeautifulSoup
+from typing import Optional
+
+try:
+    import pymupdf
+except ImportError:
+    pymupdf = None
 
 
 class NSEDownloader:
     BASE_HOME = "https://www.nseindia.com"
     API_URL = "https://www.nseindia.com/api/annual-reports"
-    SEARCH_URL = "https://html.duckduckgo.com/html/"
+
     HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;"
+            "q=0.9,image/avif,image/webp,*/*;q=0.8"
+        ),
         "Accept-Language": "en-US,en;q=0.9",
-        "Connection": "keep-alive",
     }
 
     def __init__(self, download_dir: str = "./data/downloads"):
@@ -27,152 +43,509 @@ class NSEDownloader:
         self.session.headers.update(self.HEADERS)
         self._session_initialized = False
 
-    @staticmethod
-    def _clean_symbol(symbol: str) -> str:
-        value = symbol.upper().strip()
-        return value[:-3] if value.endswith(".NS") else value
-
-    def _init_session(self) -> bool:
+    def _init_session(self):
+        """Visit NSE homepage to initialize required cookies."""
         try:
-            resp = self.session.get(self.BASE_HOME, headers={**self.HEADERS, "Referer": "https://www.google.com/"}, timeout=15)
+            resp = self.session.get(self.BASE_HOME, timeout=15)
             resp.raise_for_status()
             self._session_initialized = True
-            return True
-        except requests.RequestException as exc:
-            print(f"[!] NSE access unavailable ({exc}). Using annual-report fallback search.")
-            return False
+        except Exception as e:
+            print(f"[!] Warning: Could not initialize NSE session cookies: {e}")
 
     @staticmethod
-    def _is_pdf_candidate(url: str, title: str = "") -> bool:
-        text = f"{url} {title}".lower()
-        # Some BSE annual-report PDFs use opaque AttachHis UUID URLs, so the
-        # URL itself may contain neither 'annual' nor 'report'. The search
-        # result title is therefore equally important.
-        return ".pdf" in text and (
-            any(term in text for term in ("annual", "report", "ar_", "financial"))
-            or "bseindia.com" in url.lower()
-        )
+    def _extract_fin_year(record: dict, file_url: str = "") -> str | None:
+        """Extract a financial-year label from an NSE annual-report record."""
+        for key in (
+            "finYear",
+            "financialYear",
+            "financial_year",
+            "year",
+            "FY",
+        ):
+            value = record.get(key)
+            if value:
+                value = str(value).strip()
+                if value:
+                    return value
 
-    def _fallback_search(self, symbol: str) -> Optional[str]:
-        clean_symbol = self._clean_symbol(symbol)
-        queries = [
-            f'"{clean_symbol}" "annual report" filetype:pdf',
-            f'"{clean_symbol}" "annual report 2025-26" pdf',
-            f'"{clean_symbol}" "annual report 2024-25" pdf',
-            f'"KJMC Financial Services Limited" "annual report" pdf',
-            f'"KJMC Financial Services Limited" "38th Annual Report" pdf',
-            f'"530235" "annual report" pdf',
-            f'site:bseindia.com "KJMC Financial Services" "Annual Report" pdf',
-            f'site:bseindia.com "530235" "Annual Report" pdf',
-        ]
-        for query in queries:
-            try:
-                response = self.session.get(
-                    self.SEARCH_URL,
-                    params={"q": query},
-                    headers={**self.HEADERS, "Referer": "https://duckduckgo.com/"},
-                    timeout=20,
-                )
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, "html.parser")
-                candidates: list[tuple[int, str]] = []
-                for anchor in soup.select("a.result__a"):
-                    href = anchor.get("href") or ""
-                    title = anchor.get_text(" ", strip=True)
-                    match = re.search(r"uddg=([^&]+)", href)
-                    url = unquote(match.group(1)) if match else href
-                    if not url.startswith(("http://", "https://")) or not self._is_pdf_candidate(url, title):
-                        continue
-                    lower_url = url.lower()
-                    lower_title = title.lower()
-                    score = 0
-                    if "bseindia.com" in lower_url:
-                        score += 120
-                    if "nsearchives.nseindia.com" in lower_url:
-                        score += 110
-                    if "kjmc" in lower_url or "kjmc" in lower_title:
-                        score += 40
-                    if "530235" in lower_url or "530235" in lower_title:
-                        score += 35
-                    if ".pdf" in lower_url:
-                        score += 20
-                    if "annual" in lower_title or "annual" in lower_url:
-                        score += 25
-                    if "report" in lower_title or "report" in lower_url:
-                        score += 15
-                    if "2025-26" in lower_title or "2025-26" in lower_url or "2026" in lower_title or "2026" in lower_url:
-                        score += 15
-                    if "2024-25" in lower_title or "2024-25" in lower_url or "2025" in lower_title or "2025" in lower_url:
-                        score += 10
-                    candidates.append((score, url))
-                if candidates:
-                    candidates.sort(reverse=True)
-                    url = candidates[0][1]
-                    print(f"[+] Fallback annual-report PDF found for {clean_symbol}: {url}")
-                    return url
-            except requests.RequestException as exc:
-                print(f"[!] Fallback annual-report search failed for {clean_symbol}: {exc}")
-        print(f"[!] Could not locate an annual-report PDF for '{clean_symbol}' via NSE or fallback search.")
+        # Example:
+        # LAURUSLABS_2020_2021_...
+        match = re.search(
+            r"_(20\d{2})_(20\d{2})(?:_|\.|$)",
+            file_url,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            return f"FY{match.group(1)}-{match.group(2)[-2:]}"
+
         return None
 
-    def get_latest_annual_report_url(self, symbol: str) -> Optional[str]:
-        symbol = self._clean_symbol(symbol)
+    def get_annual_report_records(self, symbol: str) -> list[dict]:
+        """Return available NSE annual-report records, newest first."""
         if not self._session_initialized:
             self._init_session()
-        params = {"index": "equities", "symbol": symbol}
-        api_headers = {**self.HEADERS, "Referer": "https://www.nseindia.com/companies-listing/corporate-filings-annual-reports", "Accept": "application/json, text/plain, */*"}
-        try:
-            res = self.session.get(self.API_URL, params=params, headers=api_headers, timeout=15)
-            if res.status_code in (401, 403):
-                print(f"[!] NSE annual-report API returned HTTP {res.status_code} for {symbol}.")
-                return self._fallback_search(symbol)
-            res.raise_for_status()
-            items = (res.json() or {}).get("data", [])
-            if not items:
-                print(f"[!] No annual reports returned by NSE for symbol '{symbol}'. Trying fallback search.")
-                return self._fallback_search(symbol)
-            latest = items[0]
-            file_url = latest.get("fileName")
-            if file_url:
-                print(f"[+] Found NSE filing for {symbol} ({latest.get('companyName', '')}) - FY: {latest.get('finYear', 'N/A')}")
-                return file_url
-            return self._fallback_search(symbol)
-        except (requests.RequestException, ValueError) as exc:
-            print(f"[!] NSE annual-report lookup failed for {symbol}: {exc}")
-            return self._fallback_search(symbol)
 
-    def download_report(self, symbol: str, custom_filename: Optional[str] = None, force_redownload: bool = False) -> Optional[str]:
-        clean_symbol = self._clean_symbol(symbol)
-        target_filename = custom_filename or f"{clean_symbol}_latest_annual_report.pdf"
-        target_path = os.path.join(self.download_dir, target_filename)
-        if os.path.exists(target_path) and os.path.getsize(target_path) > 10 * 1024 and not force_redownload:
-            print(f"[✓] File already exists: {target_path}")
-            print("[*] Skipping download. Using cached report directly for analysis.")
-            return target_path
-        pdf_url = self.get_latest_annual_report_url(clean_symbol)
-        if not pdf_url:
-            return None
-        print(f"[*] Downloading annual report from: {pdf_url}")
-        temp_path = f"{target_path}.tmp"
+        params = {
+            "index": "equities",
+            "symbol": symbol.upper().strip(),
+        }
+
+        api_headers = {
+            "Referer": (
+                "https://www.nseindia.com/"
+                "companies-listing/corporate-filings-annual-reports"
+            ),
+            "Accept": "application/json, text/plain, */*",
+        }
+
         try:
-            res = self.session.get(pdf_url, headers={**self.HEADERS, "Referer": "https://www.nseindia.com/"}, stream=True, timeout=90)
+            res = self.session.get(
+                self.API_URL,
+                params=params,
+                headers=api_headers,
+                timeout=30,
+            )
+
+            if res.status_code in (401, 403):
+                self._init_session()
+                res = self.session.get(
+                    self.API_URL,
+                    params=params,
+                    headers=api_headers,
+                    timeout=30,
+                )
+
             res.raise_for_status()
-            with open(temp_path, "wb") as fh:
-                for chunk in res.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        fh.write(chunk)
-            if os.path.getsize(temp_path) <= 10 * 1024:
-                raise IOError("Downloaded annual-report file is unexpectedly small")
-            if os.path.exists(target_path):
-                os.remove(target_path)
-            os.replace(temp_path, target_path)
-            print(f"[+] Successfully downloaded: {target_path}")
-            return target_path
-        except Exception as exc:
-            if os.path.exists(temp_path):
+
+            data = res.json()
+            items = data.get("data", []) if isinstance(data, dict) else []
+
+            records = [
+                item
+                for item in items
+                if isinstance(item, dict) and item.get("fileName")
+            ]
+
+            # NSE does not always populate finYear.
+            # Derive it from the annual-report URL.
+            for record in records:
+                file_url = str(record.get("fileName") or "")
+
+                if not record.get("finYear"):
+                    match = re.search(
+                        r"_(20\d{2})_(20\d{2})(?:_|\.)",
+                        file_url,
+                        re.IGNORECASE,
+                    )
+
+                    if match:
+                        record["finYear"] = (
+                            f"FY{match.group(1)}-{match.group(2)[-2:]}"
+                        )
+                    else:
+                        record["finYear"] = None
+
+            return records
+
+        except Exception as e:
+            print(f"[x] Error querying NSE annual reports: {e}")
+            return []
+
+    def get_latest_annual_report_url(
+        self,
+        symbol: str,
+    ) -> Optional[str]:
+        """Fetch the latest annual-report download URL."""
+        records = self.get_annual_report_records(symbol)
+
+        if not records:
+            print(
+                f"[!] No annual reports found on NSE for symbol '{symbol}'."
+            )
+            return None
+
+        latest = records[0]
+
+        print(
+            f"[+] Found filing for {symbol} "
+            f"({latest.get('companyName', '')}) - "
+            f"FY: {latest.get('finYear', 'N/A')}"
+        )
+
+        return latest.get("fileName")
+
+    @staticmethod
+    def _safe_year(record: dict, index: int) -> str:
+        value = str(
+            record.get("finYear")
+            or record.get("financialYear")
+            or record.get("year")
+            or ""
+        ).strip()
+
+        return (
+            value.replace("/", "-").replace(" ", "_")
+            or f"report_{index + 1}"
+        )
+
+    @staticmethod
+    def _is_valid_pdf(path: str) -> bool:
+        """
+        Return True only when the file is a readable PDF with at least one page.
+        """
+        if not os.path.exists(path):
+            return False
+
+        try:
+            if os.path.getsize(path) <= 10 * 1024:
+                return False
+        except OSError:
+            return False
+
+        try:
+            with open(path, "rb") as fh:
+                if fh.read(5) != b"%PDF-":
+                    return False
+        except OSError:
+            return False
+
+        if pymupdf is None:
+            print(
+                "[!] PyMuPDF is unavailable; "
+                "cannot fully validate PDF."
+            )
+            return False
+
+        try:
+            with pymupdf.open(path) as doc:
+                if not doc.is_pdf:
+                    return False
+
+                if len(doc) <= 0:
+                    return False
+
+                _ = doc[0].get_text("text")
+
+            return True
+
+        except Exception:
+            return False
+
+    def _extract_pdf_from_zip(self, zip_path: str, target_path: str) -> bool:
+        """Extract the most likely annual-report PDF from an NSE ZIP archive."""
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                members = [
+                    name for name in zf.namelist()
+                    if not name.endswith("/")
+                    and name.lower().endswith(".pdf")
+                ]
+
+                if not members:
+                    raise IOError("NSE ZIP archive contains no PDF files")
+
+                # Prefer filenames that look like annual reports.
+                def score(name: str) -> int:
+                    lower = name.lower()
+                    value = 0
+
+                    if "annual" in lower:
+                        value += 50
+                    if "report" in lower:
+                        value += 30
+                    if "ar" in lower:
+                        value += 10
+                    if "financial" in lower:
+                        value += 5
+
+                    # Prefer larger PDFs when several candidates exist.
+                    try:
+                        value += min(zf.getinfo(name).file_size // (1024 * 1024), 20)
+                    except Exception:
+                        pass
+
+                    return value
+
+                selected = max(members, key=score)
+
+                print(f"[*] ZIP contains {len(members)} PDF(s)")
+                print(f"[*] Selected PDF from ZIP: {selected}")
+
+                extract_dir = tempfile.mkdtemp(prefix="nse_ar_")
+
                 try:
-                    os.remove(temp_path)
+                    extracted = Path(zf.extract(selected, extract_dir))
+
+                    target = Path(target_path)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+
+                    shutil.copy2(extracted, target)
+
+                finally:
+                    shutil.rmtree(extract_dir, ignore_errors=True)
+
+            if not self._is_valid_pdf(str(target_path)):
+                raise IOError("Extracted annual-report PDF failed validation")
+
+            return True
+
+        except Exception as exc:
+            print(f"[!] ZIP annual-report extraction failed: {exc}")
+            return False
+
+    def _download_and_validate(
+        self,
+        pdf_url: str,
+        target_path: str,
+        timeout: int = 60,
+    ) -> bool:
+        """Download an NSE annual report and validate PDF/ZIP content."""
+        temp_path = f"{target_path}.tmp"
+
+        try:
+            response = self.session.get(
+                pdf_url,
+                stream=True,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+
+            content_type = (
+                response.headers.get("Content-Type") or ""
+            ).lower()
+
+            print(
+                f"[*] Download response: "
+                f"{response.status_code} | {content_type}"
+            )
+
+            with open(temp_path, "wb") as handle:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        handle.write(chunk)
+
+            if os.path.getsize(temp_path) <= 10 * 1024:
+                raise IOError(
+                    "Downloaded annual-report file is unexpectedly small"
+                )
+
+            with open(temp_path, "rb") as handle:
+                signature = handle.read(8)
+
+            # ------------------------------------------------
+            # Direct PDF
+            # ------------------------------------------------
+            if signature.startswith(b"%PDF-"):
+                if not self._is_valid_pdf(temp_path):
+                    raise IOError(
+                        "Downloaded annual-report PDF failed validation"
+                    )
+
+                os.replace(temp_path, target_path)
+                return True
+
+            # ------------------------------------------------
+            # NSE older annual-report ZIP
+            # ------------------------------------------------
+            if signature.startswith(b"PK"):
+                print("[*] NSE annual report is a ZIP archive")
+
+                zip_target = f"{target_path}.zip"
+
+                os.replace(temp_path, zip_target)
+
+                try:
+                    if not self._extract_pdf_from_zip(
+                        zip_target,
+                        target_path,
+                    ):
+                        raise IOError(
+                            "Downloaded annual-report ZIP "
+                            "could not produce a valid PDF"
+                        )
+                finally:
+                    try:
+                        os.remove(zip_target)
+                    except OSError:
+                        pass
+
+                return True
+
+            raise IOError(
+                "Downloaded annual-report is neither PDF nor ZIP "
+                f"(Content-Type: {content_type}, signature={signature!r})"
+            )
+
+        except Exception as exc:
+            print(f"[!] PDF/ZIP download/validation failed: {exc}")
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+            return False
+
+
+    def download_reports(
+        self,
+        symbol: str,
+        years: int = 10,
+        force_redownload: bool = False,
+    ) -> list[dict]:
+        """Download up to `years` annual reports."""
+        records = self.get_annual_report_records(symbol)
+
+        if not records:
+            return []
+
+        selected = records[:max(1, years)]
+        results: list[dict] = []
+
+        for index, record in enumerate(selected):
+            fy = self._safe_year(record, index)
+
+            target_filename = (
+                f"{symbol.upper().strip()}_{fy}_annual_report.pdf"
+            )
+
+            target_path = os.path.join(
+                self.download_dir,
+                target_filename,
+            )
+
+            if os.path.exists(target_path) and not force_redownload:
+                if self._is_valid_pdf(target_path):
+                    print(
+                        f"[✓] Valid cached annual report: "
+                        f"{target_filename}"
+                    )
+
+                    results.append(
+                        {
+                            "fiscal_year": str(
+                                record.get("finYear")
+                                or record.get("financialYear")
+                                or fy
+                            ),
+                            "path": target_path,
+                            "url": record.get("fileName"),
+                        }
+                    )
+                    continue
+
+                print(
+                    f"[!] Cached annual report is invalid/unreadable; "
+                    f"will redownload: {target_filename}"
+                )
+
+                try:
+                    os.remove(target_path)
                 except OSError:
                     pass
-            print(f"[x] Annual-report download failed for {clean_symbol}: {exc}")
+
+            pdf_url = record.get("fileName")
+
+            if not pdf_url:
+                print(
+                    f"[!] No PDF URL for "
+                    f"{symbol.upper()} {record.get('finYear', fy)}"
+                )
+                continue
+
+            print(
+                f"[*] Downloading "
+                f"{symbol.upper()} "
+                f"{record.get('finYear', fy)} annual report..."
+            )
+
+            success = self._download_and_validate(
+                pdf_url,
+                target_path,
+                timeout=120,
+            )
+
+            if not success:
+                print(
+                    f"[!] Failed to download/validate "
+                    f"{symbol.upper()} "
+                    f"{record.get('finYear', fy)}"
+                )
+                continue
+
+            print(
+                f"[✓] Valid annual report downloaded: "
+                f"{target_filename}"
+            )
+
+            results.append(
+                {
+                    "fiscal_year": str(
+                        record.get("finYear")
+                        or record.get("financialYear")
+                        or fy
+                    ),
+                    "path": target_path,
+                    "url": record.get("fileName"),
+                }
+            )
+
+        return results
+
+    def download_report(
+        self,
+        symbol: str,
+        custom_filename: Optional[str] = None,
+        force_redownload: bool = False,
+    ) -> Optional[str]:
+        """Download/cache the latest annual report."""
+
+        target_filename = (
+            custom_filename
+            or f"{symbol.upper()}_latest_annual_report.pdf"
+        )
+
+        target_path = os.path.join(
+            self.download_dir,
+            target_filename,
+        )
+
+        if os.path.exists(target_path) and not force_redownload:
+            if self._is_valid_pdf(target_path):
+                print(
+                    f"[✓] Valid cached annual report: "
+                    f"{target_path}"
+                )
+                return target_path
+
+            print(
+                f"[!] Cached annual report is invalid/unreadable; "
+                f"will redownload: {target_path}"
+            )
+
+            try:
+                os.remove(target_path)
+            except OSError:
+                pass
+
+        pdf_url = self.get_latest_annual_report_url(symbol)
+
+        if not pdf_url:
             return None
+
+        print(f"[*] Downloading PDF from: {pdf_url}")
+
+        success = self._download_and_validate(
+            pdf_url,
+            target_path,
+            timeout=90,
+        )
+
+        if not success:
+            print(
+                "[!] Downloaded annual-report file "
+                "failed PDF validation."
+            )
+            return None
+
+        print(f"[+] Successfully downloaded: {target_path}")
+
+        return target_path
