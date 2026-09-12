@@ -6,6 +6,7 @@ Gemini extracts and interprets evidence; Python owns numeric calculations and fi
 
 import os
 import json
+import warnings
 from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -13,6 +14,10 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from src.financial_tools import CompanyFinancialHistory
 from src.prompts import FORENSIC_AUDITOR_SYSTEM, FINANCIAL_EXTRACTION_SYSTEM, INVESTMENT_COMMITTEE_SYSTEM
+
+
+warnings.filterwarnings("ignore", message=r".*fixed sampling defaults.*temperature will be ignored.*")
+warnings.filterwarnings("ignore", message=r".*automatic function calling \(AFC\).*")
 
 
 class ForensicAuditOutput(BaseModel):

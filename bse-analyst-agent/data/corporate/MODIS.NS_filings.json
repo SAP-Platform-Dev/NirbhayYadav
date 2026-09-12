@@ -1,0 +1,17 @@
+{
+  "symbol": "MODIS.NS",
+  "announcements": [],
+  "pit": [],
+  "pit_risk_rows": [],
+  "shareholding": {
+    "symbol": "MODIS.NS",
+    "available": false,
+    "rows": [],
+    "data_gap": "NSE shareholding pattern unavailable"
+  },
+  "promoter_holding_pct": null,
+  "promoter_pledge_pct": null,
+  "promoter_change_pct": null,
+  "source": "NSE corporate-announcements + NSE PIT + NSE shareholding pattern",
+  "available": true
+}

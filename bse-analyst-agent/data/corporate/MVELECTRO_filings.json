@@ -1,0 +1,136 @@
+{
+  "symbol": "MVELECTRO",
+  "announcements": [
+    {
+      "subject": "Copy of Newspaper Publication",
+      "details": "MV Electrosystems Limited has informed the Exchange about Copy of Newspaper Publication",
+      "date": "04-Sep-2026 11:50:21"
+    },
+    {
+      "subject": "General Updates",
+      "details": "MV Electrosystems Limited has informed the Exchange about Dispatch of Letters to Shareholders whose email address is not registered with Company/RTA/DP providing weblink from where Notice of AGM and Annual Report for the Financial Year 2025-26 can be accessed",
+      "date": "03-Sep-2026 19:52:12"
+    },
+    {
+      "subject": "General Updates",
+      "details": "Reg 34- Annual Report FY 2025-26",
+      "date": "03-Sep-2026 19:43:12"
+    },
+    {
+      "subject": "Shareholders meeting",
+      "details": "MV Electrosystems Limited has informed the Exchange regarding Notice of Annual General Meeting to be held on September 29, 2026",
+      "date": "03-Sep-2026 18:46:45"
+    },
+    {
+      "subject": "Copy of Newspaper Publication",
+      "details": "MV Electrosystems Limited has informed the Exchange about Copy of Newspaper Publication",
+      "date": "02-Sep-2026 12:16:16"
+    },
+    {
+      "subject": "Analysts/Institutional Investor Meet/Con. Call Updates",
+      "details": "MV Electrosystems Limited has informed the Exchange about Transcript",
+      "date": "01-Sep-2026 16:24:19"
+    },
+    {
+      "subject": "Analysts/Institutional Investor Meet/Con. Call Updates",
+      "details": "MV Electrosystems Limited has informed the Exchange about Link of Audio Recording",
+      "date": "27-Aug-2026 16:08:17"
+    },
+    {
+      "subject": "Copy of Newspaper Publication",
+      "details": "MV Electrosystems Limited has informed the Exchange about Copy of Newspaper Publication",
+      "date": "27-Aug-2026 14:15:01"
+    },
+    {
+      "subject": "Investor Presentation",
+      "details": "MV Electrosystems Limited has informed the Exchange about Investor Presentation",
+      "date": "26-Aug-2026 21:19:38"
+    },
+    {
+      "subject": "Change in Management",
+      "details": "MV Electrosystems Limited has informed the Exchange about appointment of internal auditor and secretarial auditor of the company",
+      "date": "25-Aug-2026 22:50:50"
+    },
+    {
+      "subject": "Outcome of Board Meeting",
+      "details": "MV Electrosystems Limited has submitted to the Exchange, the financial results for the period ended Jun 30, 2026.",
+      "date": "25-Aug-2026 16:33:36"
+    },
+    {
+      "subject": "Analysts/Institutional Investor Meet/Con. Call Updates",
+      "details": "MV Electrosystems Limited has informed the Exchange about Schedule of meet",
+      "date": "24-Aug-2026 20:42:59"
+    },
+    {
+      "subject": "Trading Window",
+      "details": "MV Electrosystems Limited has informed the Exchange regarding the Trading Window closure pursuant to SEBI (Prohibition of Insider Trading) Regulations, 2015",
+      "date": "06-Aug-2026 17:25:25"
+    },
+    {
+      "subject": "Updates",
+      "details": "MV Electrosystems Limited has informed the Exchange regarding 'In&#1048991;ma&#1048991;on under Regula&#1048991;on 8(2) of the Securi&#1048991;es and Exchange Board of India (Prohibi&#1048991;on ofInsider Trading) Regula&#1048991;ons, 2015'.",
+      "date": "06-Aug-2026 17:16:32"
+    },
+    {
+      "subject": "Updates",
+      "details": "MV Electrosystems Limited has informed the Exchange regarding 'Intimation under Regulation 30 (5) of the Securities and Exchange Board of India (Listing Obligations and Disclosure Requirements Regulations), 2015'.",
+      "date": "06-Aug-2026 17:05:58"
+    }
+  ],
+  "pit": [],
+  "pit_risk_rows": [],
+  "shareholding": {
+    "symbol": "MVELECTRO",
+    "available": true,
+    "as_on_date": "05-AUG-2026",
+    "submission_date": "06-AUG-2026",
+    "broadcast_date": "19-AUG-2026 12:44:43",
+    "xbrl_url": "https://nsearchives.nseindia.com/corporate/xbrl/SHP_1714230_14082026113018_WEB.xml",
+    "promoter_holding_pct": 57.68,
+    "public_holding_pct": 42.32,
+    "promoter_pledge_pct": null,
+    "promoter_change_pct": null,
+    "rows": [
+      {
+        "broadcastDate": "19-AUG-2026 12:44:43",
+        "cgTimeStamp": null,
+        "countString": null,
+        "date": "05-AUG-2026",
+        "desc": "NEW_1",
+        "employeeTrusts": "0",
+        "format": null,
+        "index": "-",
+        "industry": "-",
+        "isin": "INE0OWZ01020",
+        "name": "MV Electrosystems Limited",
+        "newColumn": true,
+        "pr_and_prgrp": "57.68",
+        "promoterDematNotes": "",
+        "publicShareholdingNotes": "",
+        "public_val": "42.32",
+        "recordId": "213019",
+        "remarksWeb": "Table VI  Statement showing foreign ownership limits - Approved Limit: # Details of sectoral / statutory cap prescribed by Government / Regulatory Authorities",
+        "revisedData": "Revised",
+        "revisedDate": null,
+        "revisedRemark": null,
+        "revisedStatus": "Revised",
+        "revisionDate": "14-AUG-2026",
+        "revisionRemark": "The name of Usha singh is now included in the Promoter Group category irrespective of holding valid PAN and she holds Zero shares of the Company.",
+        "shareholdingPatternNotes": "",
+        "submissionDate": "06-AUG-2026",
+        "symbol": "MVELECTRO",
+        "systemDate": "19-AUG-2026 12:44:48",
+        "timeDifference": "00:00:05",
+        "typeOfSubmission": null,
+        "underlyingDrs": null,
+        "xbrl": "https://nsearchives.nseindia.com/corporate/xbrl/SHP_1714230_14082026113018_WEB.xml",
+        "xbrlFileSize": "322.55 KB"
+      }
+    ]
+  },
+  "promoter_holding_pct": 57.68,
+  "promoter_pledge_pct": null,
+  "promoter_change_pct": null,
+  "source": "NSE corporate-announcements + NSE PIT + NSE shareholding pattern",
+  "available": true
+}
