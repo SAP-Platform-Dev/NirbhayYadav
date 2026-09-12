@@ -17,6 +17,108 @@ from src.agent import AnalysisOrchestrator
 from src.nse_universe import NSEUniverse
 from src.smallcap_scanner import SmallMicrocapConfig, classify_market_cap
 from src.deep_scanner import run_deep_scan
+from src.corporate_risk import assess_corporate_risk, extract_announcements_from_rows
+from src.nse_corporate_filings import NSECorporateFilings
+
+
+def run_corporate_risk_only(symbol: str, report_years: int = 10, live_filings: bool = True):
+    """Corporate-risk-only test path.
+
+    This deliberately does NOT run financial ratios, valuation, quality score,
+    investment memo, or final investment recommendation. It downloads up to
+    ten annual reports and uses only their audit/notes evidence for governance
+    risk, alongside current NSE corporate/PIT/shareholding signals.
+    """
+    symbol = symbol.upper().strip()
+    print(f"\n{'=' * 72}\n CORPORATE RISK ONLY | {symbol}\n{'=' * 72}")
+    print(f"[*] Annual-report history requested: {report_years} years")
+
+    filing_data = {"announcements": [], "pit_risk_rows": [], "shareholding": {}}
+    if live_filings:
+        print("[*] Collecting current NSE corporate/PIT/shareholding signals...")
+        filing_data = NSECorporateFilings().cached_risk_inputs(symbol, days=180, refresh=True)
+
+    shareholding = filing_data.get("shareholding", {})
+    promoter_holding = filing_data.get("promoter_holding_pct")
+    promoter_pledge = filing_data.get("promoter_pledge_pct")
+    promoter_change = filing_data.get("promoter_change_pct")
+
+    audits = []
+    downloader = NSEDownloader()
+    reports = downloader.download_reports(symbol, years=report_years)
+    print(f"[+] Annual reports downloaded/available: {len(reports)}")
+
+    ai = AnalysisOrchestrator()
+    for item in reports:
+        fy = item.get("fiscal_year", "Unknown")
+        try:
+            parser = FinancialDocParser(item["path"])
+            sections = parser.extract_critical_sections()
+            print(f"[*] Forensic governance audit: {fy}")
+            forensic = ai.audit_forensics(sections.get("auditor_report", ""), sections.get("notes", ""))
+            audits.append({
+                "fiscal_year": fy,
+                "audit_opinion_type": forensic.audit_opinion_type,
+                "contingent_liability_risk": forensic.contingent_liability_risk,
+                "related_party_risk": forensic.related_party_risk,
+                "forensic_red_flags": forensic.forensic_red_flags,
+            })
+        except Exception as exc:
+            print(f"[!] Could not audit {fy}: {type(exc).__name__}: {exc}")
+
+    if not reports:
+        report_gap = "No annual reports available from NSE"
+    elif len(audits) < min(report_years, len(reports)):
+        report_gap = f"Only {len(audits)}/{len(reports)} available reports were successfully audited"
+    else:
+        report_gap = None
+
+    announcements = extract_announcements_from_rows(
+        [*filing_data.get("announcements", []), *filing_data.get("pit_risk_rows", [])]
+    )
+    corporate = assess_corporate_risk(
+        promoter_holding_pct=promoter_holding,
+        promoter_pledge_pct=promoter_pledge,
+        promoter_change_pct=promoter_change,
+        announcements=announcements,
+        annual_report_audits=audits,
+    )
+    if report_gap:
+        corporate.data_gaps.append(report_gap)
+
+    print("\n" + "=" * 72)
+    print("CORPORATE RISK RESULT")
+    print("=" * 72)
+    print(f"Risk Score       : {corporate.risk_score}/100")
+    print(f"Governance Grade : {corporate.governance_grade}")
+    print(f"Annual Report Score: {corporate.annual_report_score}/100")
+    print(f"Reports Scanned  : {corporate.reports_scanned}")
+    print(f"Hard Fail        : {'YES' if corporate.hard_fail else 'NO'}")
+    print(f"Promoter Holding : {promoter_holding}")
+    print(f"Promoter Pledge  : {promoter_pledge}")
+    print(f"Promoter Change  : {promoter_change}")
+
+    print("\nRISK FLAGS")
+    for flag in corporate.risk_flags or ["None"]:
+        print(f"  [!] {flag}")
+    print("\nPOSITIVE SIGNALS")
+    for signal in corporate.positive_signals or ["None"]:
+        print(f"  [+] {signal}")
+    print("\nDATA GAPS")
+    for gap in corporate.data_gaps or ["None"]:
+        print(f"  [?] {gap}")
+
+    print("\n10-YEAR REPORT AUDIT SUMMARY")
+    for audit in audits:
+        print(
+            f"  {audit['fiscal_year']}: "
+            f"Audit={audit['audit_opinion_type']} | "
+            f"Contingent={audit['contingent_liability_risk']} | "
+            f"RelatedParty={audit['related_party_risk']} | "
+            f"RedFlags={len(audit['forensic_red_flags'] or [])}"
+        )
+
+    return corporate
 
 
 def save_summary_to_notepad(symbol, forensics, ratios, quality, valuation, recommendation, memo, output_dir="./outputs"):
@@ -108,6 +210,8 @@ if __name__ == "__main__":
     cli.add_argument("symbol", nargs="?", default="TCS", help="NSE symbol for deep analysis")
     cli.add_argument("--scan", action="store_true", help="Stage 1: discover NSE small/micro-cap candidates")
     cli.add_argument("--deep-scan", action="store_true", help="Stage 2: deeply analyze the Stage-1 CSV")
+    cli.add_argument("--corporate-risk", action="store_true", help="Corporate-risk-only test using up to ten annual reports")
+    cli.add_argument("--corporate-years", type=int, default=10, help="Annual reports used by --corporate-risk (default: 10)")
     cli.add_argument("--refresh", action="store_true", help="Refresh the NSE universe cache")
     cli.add_argument("--top", type=int, default=50, help="Stage-1 candidates or Stage-2 shortlist size")
     cli.add_argument("--deep-limit", type=int, default=20, help="Maximum Stage-1 candidates sent to deep analysis")
@@ -119,7 +223,11 @@ if __name__ == "__main__":
     cli.add_argument("--target-pe", type=float, default=25.0, help="Target P/E multiple")
     cli.add_argument("--mos", type=float, default=20.0, help="Margin of safety percentage")
     args = cli.parse_args()
-    if args.deep_scan:
+    if args.corporate_risk:
+        run_corporate_risk_only(args.symbol, report_years=max(1, min(args.corporate_years, 10)), live_filings=not args.no_live_filings)
+    elif args.deep_scan:
         run_deep_scan(input_csv=args.input_csv, top=args.top, deep_limit=args.deep_limit, live_filings=not args.no_live_filings)
-    elif args.scan: run_universe_scan(refresh=args.refresh, top=args.top, limit=args.limit)
-    else: main(args.symbol, args.price, args.shares_cr, args.target_pe, args.mos)
+    elif args.scan:
+        run_universe_scan(refresh=args.refresh, top=args.top, limit=args.limit)
+    else:
+        main(args.symbol, args.price, args.shares_cr, args.target_pe, args.mos)
