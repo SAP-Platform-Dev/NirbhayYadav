@@ -16,7 +16,9 @@ data/downloads/
 outputs/
 *.pdf
 *.tmp
-
+data/corporate/*.json
 # IDE
 .vscode/
 .idea/
+
+ 
